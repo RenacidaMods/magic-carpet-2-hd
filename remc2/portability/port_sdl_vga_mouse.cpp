@@ -162,7 +162,7 @@ void VGA_Init(Uint32  /*flags*/, int windowWidth, int windowHeight, int gameResW
 					SDL_RENDERER_TARGETTEXTURE);
 			SDL_RendererInfo rendererInfo;
 			if (m_renderer && SDL_GetRendererInfo(m_renderer, &rendererInfo) == 0)
-				Logger->info("SDL renderer: {}", rendererInfo.name);
+				Logger->info("SDL renderer: {}, game resolution {} x {}", rendererInfo.name, gameResWidth, gameResHeight);
 
 			SDL_SetRenderDrawColor(m_renderer, 0x00, 0x00, 0x00, 0xFF);
 

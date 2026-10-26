@@ -19,6 +19,25 @@
 #include "../portability/port_sdl_sound.h"
 #include "../portability/port_time.h"
 
+// gameResWidth/Height 0: the resolution of the display the game is shown on (displayIndex, else the first), from its
+// desktop mode in real pixels; false when SDL can't tell
+static bool DisplayResolution(int index, int& width, int& height)
+{
+	if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+		return false;
+	if (index < 0 || index >= SDL_GetNumVideoDisplays())
+		index = 0;
+	SDL_DisplayMode mode;
+	const bool found = SDL_GetDesktopDisplayMode(index, &mode) == 0 && mode.w > 0 && mode.h > 0;
+	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+	if (found)
+	{
+		width = mode.w;
+		height = mode.h;
+	}
+	return found;
+}
+
 int config_skip_screen;
 int texturepixels = 32;
 int maxGameFps = 30;
@@ -195,6 +214,11 @@ bool SetConfig() {
 	renderDriver = settingsValue.m_Graphics.m_RenderDriver;
 	gameResWidth = settingsValue.m_Graphics.m_GameDetail.m_GameResWidth;
 	gameResHeight = settingsValue.m_Graphics.m_GameDetail.m_GameResHeight;
+	if (gameResWidth == 0 && gameResHeight == 0 && !DisplayResolution(displayIndex, gameResWidth, gameResHeight))
+	{
+		gameResWidth = 1920;
+		gameResHeight = 1080;
+	}
 	if (gameResWidth < 320 || gameResHeight < 200)
 	{
 		gameResWidth = 320;
