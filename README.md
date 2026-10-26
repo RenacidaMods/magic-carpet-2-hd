@@ -2,6 +2,8 @@
 >
 > This fork adds smooth frame rates at 4K (in-between frames up to 120 fps while the game keeps its normal speed), round sprites, a faster Direct3D 11 display mode and fixes.
 >
+> **Credits:** Magic Carpet 2 HD is the work of [Tim Hobbs](https://github.com/thobbsinteractive) (thobbsinteractive), [Tomáš Veselý](https://github.com/turican0) (turican0) and their contributors. Tomáš's years of [reverse engineering the original game](https://github.com/turican0/remc2) made all of this possible. RenacidaMods only builds on top of it.
+>
 > **Download:** [the latest RenacidaMods edition](https://github.com/RenacidaMods/magic-carpet-2-hd/releases/latest), a small add-on for [Magic Carpet 2 HD](https://github.com/thobbsinteractive/magic-carpet-2-hd) 0.9.16.0. No game files included: you need your own copy of Magic Carpet 2.
 >
 > **What's changed and how it works:** [RenacidaMods-changes.md](RenacidaMods-changes.md), one commit per change, most behind a setting.
