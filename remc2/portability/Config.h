@@ -86,6 +86,7 @@ public:
 			int m_ViewDistanceScale = 2;
 			float m_FogScale = 1.0f;
 			bool m_WidescreenFov = false;
+			bool m_SpriteAspectFix = false;
 		};
 
 		struct Threading

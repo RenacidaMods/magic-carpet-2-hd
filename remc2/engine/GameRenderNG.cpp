@@ -1229,6 +1229,8 @@ GameRenderNG::SpriteChoice GameRenderNG::ChooseSprite(type_entity_0x6E8E* entity
 	str_F2C20ar.dword0x06_height = sprite->height;
 	str_F2C20ar.dword0x0c_realHeight = str_F2C20ar.dword0x18 * def.worldSize_8 / depth;
 	str_F2C20ar.dword0x09_realWidth = str_F2C20ar.dword0x0c_realHeight * str_F2C20ar.dword0x08_width / str_F2C20ar.dword0x06_height;
+	if (spriteAspectFix)//the sprites are drawn for the tall pixels of 320x200 on a 4:3 screen: on square pixels 5/6 of the width
+		str_F2C20ar.dword0x09_realWidth = str_F2C20ar.dword0x09_realWidth * 5 / 6;
 	str_F2C20ar.dword0x05 = mirrored ? -str_F2C20ar.dword0x08_width : str_F2C20ar.dword0x08_width;
 	return SpriteChoice::Draw;
 }

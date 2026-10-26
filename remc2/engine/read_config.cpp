@@ -42,6 +42,7 @@ bool dynamicLighting = false;
 int viewDistanceScale = 1;
 float fogScale = 1.0f;
 bool widescreenFov = false;
+bool spriteAspectFix = false;
 bool multiThreadedRender = false;
 float sizePercentToThreadRender = 0;
 float sizePercentToThreadRenderSprites = 0;
@@ -243,6 +244,7 @@ bool SetConfig() {
 	if (settingsValue.m_Graphics.m_GameDetail.m_FogScale > 0)
 		fogScale = settingsValue.m_Graphics.m_GameDetail.m_FogScale;
 	widescreenFov = settingsValue.m_Graphics.m_GameDetail.m_WidescreenFov;
+	spriteAspectFix = settingsValue.m_Graphics.m_GameDetail.m_SpriteAspectFix;
 
 	multiThreadedRender = settingsValue.m_Graphics.m_Threading.m_IsActive;
 	sizePercentToThreadRender = settingsValue.m_Graphics.m_Threading.m_SizePercentToThreadRender;

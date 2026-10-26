@@ -53,6 +53,7 @@ extern bool dynamicLighting;
 extern int viewDistanceScale;
 extern float fogScale;
 extern bool widescreenFov;
+extern bool spriteAspectFix;
 extern bool openGLRender;
 extern float sizePercentToThreadRender;
 extern float sizePercentToThreadRenderSprites;
