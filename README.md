@@ -4,6 +4,8 @@
 >
 > **Download:** [RenacidaMods edition 0.1](https://github.com/RenacidaMods/magic-carpet-2-hd/releases/tag/renacidamods-0.1), a small add-on for [Magic Carpet 2 HD](https://github.com/thobbsinteractive/magic-carpet-2-hd) 0.9.16.0. No game files included: you need your own copy of Magic Carpet 2.
 >
+> **What's changed and how it works:** [RenacidaMods-changes.md](RenacidaMods-changes.md), one commit per change, most behind a setting.
+>
 > More from RenacidaMods: [github.com/RenacidaMods](https://github.com/RenacidaMods). Not affiliated with EA or Bullfrog.
 
 # Magic Carpet 2 HD
