@@ -146,6 +146,8 @@ void VGA_Init(Uint32  /*flags*/, int windowWidth, int windowHeight, int gameResW
 			// "direct3d"), empty for the choice of SDL; SDL falls back to another one when it is not there
 			if (!renderDriver.empty())
 				SDL_SetHint(SDL_HINT_RENDER_DRIVER, renderDriver.c_str());
+			// Alt+F4 is a key of the game (a cheat that destroys all the castles), so on Windows it must not close the window
+			SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, "1");
 
 			SDL_Rect display = GetDisplayByIndex(displayIndex);
 			if (windowWidth > display.w || windowHeight > display.h)
@@ -966,7 +968,7 @@ int PollSdlEvents()
 			}
 			break;
 		}
-		case SDL_QUIT://Alt+F4 or the close button of the window: quit at once as Exit_thread (unsaved progress is lost)
+		case SDL_QUIT://the close button of the window: quit at once as Exit_thread (unsaved progress is lost)
 #ifndef __ANDROID__
 			Logger->info("Window closed: quitting");
 			throw thread_exit_exception();
