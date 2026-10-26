@@ -32,6 +32,7 @@ int gameResHeight = 480;
 int gameUiScale = 1;
 bool maintainAspectRatio = false;
 bool startWindowed = false;
+std::string renderDriver = "";
 bool bigTextures = false;
 bool bigSprites = false;
 bool fixedMenuGraphics = false;
@@ -187,6 +188,7 @@ bool SetConfig() {
 	}
 	maintainAspectRatio = settingsValue.m_Graphics.m_MaintainAspectRatio;
 	startWindowed = settingsValue.m_Graphics.m_StartWindowed;
+	renderDriver = settingsValue.m_Graphics.m_RenderDriver;
 	gameResWidth = settingsValue.m_Graphics.m_GameDetail.m_GameResWidth;
 	gameResHeight = settingsValue.m_Graphics.m_GameDetail.m_GameResHeight;
 	if (gameResWidth < 320 || gameResHeight < 200)

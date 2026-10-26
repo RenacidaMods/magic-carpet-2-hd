@@ -336,6 +336,8 @@ Config::Settings::Graphics Config::GetGraphics(const json& settings)
 		graphicsValues.m_WindowResHeight = ReadIntValue(graphics, "windowResHeight");
 		graphicsValues.m_MaintainAspectRatio = ReadBoolValue(graphics, "maintainAspectRatio");
 		graphicsValues.m_StartWindowed = ReadBoolValue(graphics, "startWindowed");
+		if (graphics.contains("renderDriver"))
+			graphicsValues.m_RenderDriver = ReadStringValue(graphics, "renderDriver");
 
 		graphicsValues.m_GameDetail = GetGameDetail(graphics);
 		graphicsValues.m_Threading = GetThreading(graphics);
@@ -500,6 +502,7 @@ void Config::SaveGraphicsToDoc(Config::Settings::Graphics graphics)
 	SetInt(gfx, "windowResHeight", graphics.m_WindowResHeight);
 	SetBool(gfx, "maintainAspectRatio", graphics.m_MaintainAspectRatio);
 	SetBool(gfx, "startWindowed", graphics.m_StartWindowed);
+	SetString(gfx, "renderDriver", graphics.m_RenderDriver);
 	SaveGameDetailToDoc(graphics.m_GameDetail);
 	SaveThreadingToDoc(graphics.m_Threading);
 }

@@ -43,6 +43,7 @@ extern int gameResHeight;
 extern int gameUiScale;
 extern bool maintainAspectRatio;
 extern bool startWindowed;
+extern std::string renderDriver;
 extern bool bigTextures;
 extern bool bigSprites;
 extern bool fixedMenuGraphics;

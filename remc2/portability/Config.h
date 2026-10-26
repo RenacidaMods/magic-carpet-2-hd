@@ -105,6 +105,7 @@ public:
 			int m_WindowResHeight = 480;
 			bool m_MaintainAspectRatio = true;
 			bool m_StartWindowed = false;
+			std::string m_RenderDriver = "";
 			GameDetail m_GameDetail;
 			Threading m_Threading;
 		};
