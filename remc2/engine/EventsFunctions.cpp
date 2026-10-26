@@ -31867,6 +31867,32 @@ static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetwee
 	return true;
 }
 
+// The camera the next turn copies from the player's entity (sub_57B20, with this turn's look offsets): this turn's camera is
+// a turn behind the entity, so the frames move from it to this one instead of from the last turn's camera. false: not now
+// (paused, the barrel roll of sub_55C60 sets the roll, dead, another camera), the frames move from the last turn's camera.
+static bool NextTurnCamera(const InBetweenCamera& turn, InBetweenCamera& next)
+{
+	if (x_D41A0_BYTEARRAY_4_struct.OptionsSettingFlag_24 & GAME_PAUSED)
+		return false;
+	const type_str_0x2BDE& player = D41A0_0.array_0x2BDE[turn.levelIndex];
+	if (player.byte_0x846_2BDE || player.word_0x010_2BDE_11246 != turn.playerIndex)
+		return false;
+	const type_entity_0x6E8E* entity = Entities_EA3E4[player.playerIndex_0x00a_2BE4_11240];
+	if (!entity || !entity->dword_0xA4_164x || entity->life_0x8 < 0)
+		return false;
+	const auto* state = entity->dword_0xA4_164x;
+	const int boost = state->moveBoost_0x1E_30;
+	next = turn;
+	next.position = entity->position_0x4C_76;
+	next.rotation.yaw = static_cast<int16_t>(entity->yaw_0x1C_28 + state->nextEntity_0x18_24);
+	next.rotation.roll = state->roll_0x155_341;
+	next.rotation.pitch = static_cast<int16_t>(state->pitch_0x157_343 / 2
+		+ x_D41A0_BYTEARRAY_4_struct.colorIndex_121[1] * ((boost - (my_sign32(boost) << 4) + my_sign32(boost)) >> 4)
+		- ((boost - (my_sign32(boost) << 3) + my_sign32(boost)) >> 3)
+		+ state->entityIndex2_0x1A_26);
+	return true;
+}
+
 // the camera (and the entities) back at the turn, for the game
 static void RestoreInBetweenCamera(const InBetweenCamera& turn)
 {
@@ -31897,13 +31923,15 @@ static int DrawInBetweenFrames(const InBetweenCamera& lastTurn, std::chrono::sys
 	const int frames = renderFps / maxGameFps;
 	int drawn = 0;
 	const InBetweenCamera turn = GetInBetweenCamera();
+	InBetweenCamera next;
+	const bool ahead = NextTurnCamera(turn, next);
 	const std::chrono::duration<double, std::milli> turnMs(1000.0 / maxGameFps);
 	for (int frame = 1; frame < frames; frame++)
 	{
 		const std::chrono::duration<double, std::milli> frameMs(inBetweenDrawMs + inBetweenBlitMs);
 		if (std::chrono::system_clock::now() + 2 * frameMs > turnStart + turnMs)
 			break;
-		if (!PlaceInBetweenCamera(lastTurn, turn, InBetweenPart(turnStart)))
+		if (!PlaceInBetweenCamera(ahead ? turn : lastTurn, ahead ? next : turn, InBetweenPart(turnStart)))
 			break;
 		const auto drawStart = std::chrono::system_clock::now();
 		DrawGameFrame_2BE30();
@@ -32049,7 +32077,10 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 	if (InBetweenFramesOn())
 		LogInBetweenFrames(inBetweenFrames);
 	const InBetweenCamera turnCamera = GetInBetweenCamera();
-	const bool inBetweenCamera = InBetweenFramesOn() && PlaceInBetweenCamera(lastTurnCamera, turnCamera, InBetweenPart(turnStart));
+	InBetweenCamera nextTurnCamera;
+	const bool ahead = InBetweenFramesOn() && NextTurnCamera(turnCamera, nextTurnCamera);
+	const bool inBetweenCamera = InBetweenFramesOn()
+		&& PlaceInBetweenCamera(ahead ? turnCamera : lastTurnCamera, ahead ? nextTurnCamera : turnCamera, InBetweenPart(turnStart));
 	const auto drawStart = std::chrono::system_clock::now();
 	DrawGameFrame_2BE30();
 	inBetweenDrawMs = MsSince(drawStart);
