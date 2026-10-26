@@ -148,6 +148,9 @@ private:
 	void SetScreenBuffers();
 	// the original draws groups of 4 pixels only
 	int DrawnWidth() const { return m_largeScreen ? viewPort.Width_DE564 : viewPort.Width_DE564 & ~3; }
+	// the width the view is scaled by (zoom, pitch, sky): the view port, or with widescreenFov a 4:3 view of the same height,
+	// so a wider screen shows more at the sides instead of zooming in (the same as the original at 4:3)
+	int ProjectionWidth() const { return widescreenFov ? viewPort.Height_DE568 * 4 / 3 : viewPort.Width_DE564; }
 	void DrawSky_40950(int16_t roll);
 	void DrawSkyRows(int firstRow, int endRow);
 	void BlendBlurBuffer(uint8_t* screen, const uint8_t* buffer, bool swapFirstGroup);

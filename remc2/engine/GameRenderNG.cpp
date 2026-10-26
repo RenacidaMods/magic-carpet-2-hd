@@ -237,9 +237,10 @@ void GameRenderNG::DrawSky_40950(int16_t roll)
 	sky.size = x_BYTE_D41B5_texture_size == 128 ? 1024 : 256;
 	sky.mask = sky.size - 1;
 	const int width = viewPort.Width_DE564;
+	const int projectionWidth = ProjectionWidth();
 	const int rollIndex = roll & 0x7FF;
-	sky.cosRoll = Maths::sin_DB750[512 + rollIndex] * sky.size / width;
-	sky.sinRoll = Maths::sin_DB750[rollIndex] * sky.size / width;
+	sky.cosRoll = Maths::sin_DB750[512 + rollIndex] * sky.size / projectionWidth;
+	sky.sinRoll = Maths::sin_DB750[rollIndex] * sky.size / projectionWidth;
 
 	sky.columnU.assign(width, 0);
 	sky.columnV.assign(width, 0);
@@ -332,7 +333,8 @@ void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __i
 	const int quadrantCos = Maths::sin_DB750[512 + quadrantYaw];
 	const int quadrantSin = Maths::sin_DB750[quadrantYaw];
 	SetBillboards_3B560(-roll & 0x7FF);//21d1aa
-	str_F2C20ar.dword0x18 = 7 * Maths::sub_7277A_radix_3d(viewPort.Width_DE564 * viewPort.Width_DE564 + viewPort.Height_DE568 * viewPort.Height_DE568) * fov >> 11;
+	const int projectionWidth = ProjectionWidth();
+	str_F2C20ar.dword0x18 = 7 * Maths::sub_7277A_radix_3d(projectionWidth * projectionWidth + viewPort.Height_DE568 * viewPort.Height_DE568) * fov >> 11;
 	const uint8_t* steps = &m_tileSteps_D4328[10 * quadrant];
 
 	// the grid: x across the view, y (depth) along it
@@ -383,7 +385,7 @@ void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __i
 
 	str_F2C20ar.dword0x15_tileRenderCutOffDistance = static_cast<int>(m_cutOffDistance);//21d2df
 	str_F2C20ar.dword0x12_FogThickness = static_cast<int>(m_fogEnd - m_fogStart);
-	str_F2C20ar.dword0x22 = pitch * viewPort.Width_DE564 >> 8;
+	str_F2C20ar.dword0x22 = pitch * projectionWidth >> 8;
 	const int rollIndex = roll & 0x7FF;
 	str_F2C20ar.cos_0x11 = Maths::sin_DB750[512 + rollIndex];
 	str_F2C20ar.dword0x16_FogEnd = static_cast<int>(m_fogEnd);

@@ -365,6 +365,8 @@ Config::Settings::GameDetail Config::GetGameDetail(const json& graphics)
 		gameDetailValues.m_ViewDistanceScale = ReadIntValue(gameDetail, "viewDistanceScale");
 		if (gameDetail.contains("fogScale"))
 			gameDetailValues.m_FogScale = ReadFloatValue(gameDetail, "fogScale");
+		if (gameDetail.contains("widescreenFov"))
+			gameDetailValues.m_WidescreenFov = ReadBoolValue(gameDetail, "widescreenFov");
 	}
 	return gameDetailValues;
 }
@@ -519,6 +521,7 @@ void Config::SaveGameDetailToDoc(Config::Settings::GameDetail gameDetail)
 	SetBool(gd, "dynamicLighting", gameDetail.m_DynamicLighting);
 	SetInt(gd, "viewDistanceScale", gameDetail.m_ViewDistanceScale);
 	SetFloat(gd, "fogScale", gameDetail.m_FogScale);
+	SetBool(gd, "widescreenFov", gameDetail.m_WidescreenFov);
 }
 
 void Config::SaveThreadingToDoc(Config::Settings::Threading threading)
