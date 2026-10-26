@@ -46,6 +46,7 @@ int viewDistanceScale = 1;
 float fogScale = 1.0f;
 bool widescreenFov = false;
 bool spriteAspectFix = false;
+int mapMarkSize = 1;
 bool multiThreadedRender = false;
 float sizePercentToThreadRender = 0;
 float sizePercentToThreadRenderSprites = 0;
@@ -251,6 +252,8 @@ bool SetConfig() {
 		fogScale = settingsValue.m_Graphics.m_GameDetail.m_FogScale;
 	widescreenFov = settingsValue.m_Graphics.m_GameDetail.m_WidescreenFov;
 	spriteAspectFix = settingsValue.m_Graphics.m_GameDetail.m_SpriteAspectFix;
+	if (settingsValue.m_Graphics.m_GameDetail.m_MapMarkSize >= 1 && settingsValue.m_Graphics.m_GameDetail.m_MapMarkSize <= 8)
+		mapMarkSize = settingsValue.m_Graphics.m_GameDetail.m_MapMarkSize;
 
 	multiThreadedRender = settingsValue.m_Graphics.m_Threading.m_IsActive;
 	sizePercentToThreadRender = settingsValue.m_Graphics.m_Threading.m_SizePercentToThreadRender;

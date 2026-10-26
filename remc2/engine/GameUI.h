@@ -83,6 +83,7 @@ bool sub_596C0(axis_3d* a1, int16_t a2);
 char sub_63570(type_entity_0x6E8E* a1, type_entity_0x6E8E* a2);
 void DrawMinimap_63600(int16_t x, int16_t y, int16_t posX, int16_t posY, uint16_t width, uint16_t height, int16_t yaw, int16_t scaling, int a10);
 void DrawMinimapEntites_61880(int16_t x, int16_t y, int16_t posX, int16_t posY, uint16_t width, uint16_t height, int16_t yaw, int16_t scaling, uint8_t scale);
+extern bool largeMapMarks;
 int TransformPlayerColorIndex_616D0(int index);
 void DrawMinimapMarks_644F0(int16_t x, int16_t y, int16_t posX, int16_t posY, uint16_t width, uint16_t height, int16_t yaw, int16_t scaling, uint8_t scale);
 char DrawObjectiveRectangle_64CE0(v51x_struct* a1, uint8_t scale = 1);

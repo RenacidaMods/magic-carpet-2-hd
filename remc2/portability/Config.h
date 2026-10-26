@@ -87,6 +87,7 @@ public:
 			float m_FogScale = 1.0f;
 			bool m_WidescreenFov = false;
 			bool m_SpriteAspectFix = false;
+			int m_MapMarkSize = 1;
 		};
 
 		struct Threading

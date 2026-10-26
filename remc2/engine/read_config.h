@@ -57,6 +57,7 @@ extern int viewDistanceScale;
 extern float fogScale;
 extern bool widescreenFov;
 extern bool spriteAspectFix;
+extern int mapMarkSize;
 extern bool openGLRender;
 extern float sizePercentToThreadRender;
 extern float sizePercentToThreadRenderSprites;

@@ -13,6 +13,7 @@
 #include "MenusAndIntros.h"
 #include "Type_D93C0_Bldgprmbuffer.h"
 #include "MapColourIndexs.h"
+#include "read_config.h"
 
 
 char FontType_D419D = 1; // weak
@@ -1001,6 +1002,7 @@ uint8_t CalculateScaleOffset(uint8_t scale)
 }
 
 int debugcounter2 = 0;
+bool largeMapMarks = false;//the marks of the large map (the map screen) are drawn, see mapMarkSize
 //----- (00061A00) --------------------------------------------------------
 void DrawMinimapEntities_B_61A00(int16_t x, int16_t y, int16_t posX, int16_t posY, uint16_t width, uint16_t height, int16_t yaw, int16_t scaling, uint8_t scale)//242a00
 {
@@ -1486,13 +1488,28 @@ void DrawMinimapEntities_B_61A00(int16_t x, int16_t y, int16_t posX, int16_t pos
 							if (v78 > 1)
 								blipSize = 2;
 
-							for (int y = 0; y < (blipSize * scale); y++)
+							if (largeMapMarks && mapMarkSize > 1)
 							{
-								for (int x = 0; x < (blipSize * scale); x++)
+								// mapMarkSize: on the large map the marks mapMarkSize times as big, round their place and
+								// inside the map, so creatures and spells are easy to spot on a big screen
+								const int size = blipSize * scale * mapMarkSize;
+								const int startX = (std::max)(0, posx - (size - blipSize * scale) / 2);
+								const int startY = (std::max)(0, posy - (size - blipSize * scale) / 2);
+								const int endX = (std::min)(static_cast<int>(width), posx - (size - blipSize * scale) / 2 + size);
+								const int endY = (std::min)(static_cast<int>(height), posy - (size - blipSize * scale) / 2 + size);
+								for (int y = startY; y < endY; y++)
+									memset(ptrMapBufferStart_v84 + y * screenWidth_18062C + startX, static_cast<uint8_t>(BlipColourIdx_v94), endX - startX);
+							}
+							else
+							{
+								for (int y = 0; y < (blipSize * scale); y++)
 								{
-									ptrBlipBufferIdx_v56[x] = BlipColourIdx_v94;
+									for (int x = 0; x < (blipSize * scale); x++)
+									{
+										ptrBlipBufferIdx_v56[x] = BlipColourIdx_v94;
+									}
+									ptrBlipBufferIdx_v56 += screenWidth_18062C;
 								}
-								ptrBlipBufferIdx_v56 += screenWidth_18062C;
 							}
 						}
 						else if (x_WORD_180660_VGA_type_resolution == 1)

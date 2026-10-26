@@ -21762,6 +21762,7 @@ void DrawGameFrame_2BE30()//20CE30
 			204 / scale,
 			1);
 
+		largeMapMarks = true;
 		DrawMinimapEntites_61880(
 			0,
 			0,
@@ -21772,6 +21773,7 @@ void DrawGameFrame_2BE30()//20CE30
 			D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].struct_0x1d1_2BDE_11695[actPlayerIndex + 1].rotation__2BDE_11701.yaw,
 			204 / scale,
 			scale);
+		largeMapMarks = false;
 
 		viewPort.SetRenderViewPortSize_40BF0(locViewportPosx, 0, locViewportWidth, locViewportHeight);
 

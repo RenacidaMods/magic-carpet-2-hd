@@ -375,6 +375,8 @@ Config::Settings::GameDetail Config::GetGameDetail(const json& graphics)
 			gameDetailValues.m_WidescreenFov = ReadBoolValue(gameDetail, "widescreenFov");
 		if (gameDetail.contains("spriteAspectFix"))
 			gameDetailValues.m_SpriteAspectFix = ReadBoolValue(gameDetail, "spriteAspectFix");
+		if (gameDetail.contains("mapMarkSize"))
+			gameDetailValues.m_MapMarkSize = ReadIntValue(gameDetail, "mapMarkSize");
 	}
 	return gameDetailValues;
 }
@@ -532,6 +534,7 @@ void Config::SaveGameDetailToDoc(Config::Settings::GameDetail gameDetail)
 	SetFloat(gd, "fogScale", gameDetail.m_FogScale);
 	SetBool(gd, "widescreenFov", gameDetail.m_WidescreenFov);
 	SetBool(gd, "spriteAspectFix", gameDetail.m_SpriteAspectFix);
+	SetInt(gd, "mapMarkSize", gameDetail.m_MapMarkSize);
 }
 
 void Config::SaveThreadingToDoc(Config::Settings::Threading threading)
