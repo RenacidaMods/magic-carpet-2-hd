@@ -31720,8 +31720,9 @@ void intervalsave(int index) {
 };
 
 // renderFps over maxGameFps: the game still runs maxGameFps turns a second (its speed), and between two turns more frames
-// are drawn with the camera part of the way from the last turn to this one, so the view moves smoothly at up to renderFps.
-// The entities still move by turns. A frame is left out when there is no time for it and the frame of the turn.
+// are drawn, every frame with the camera part of the way from the last turn to this one by the time it is shown, so the
+// view moves smoothly at up to renderFps. The entities still move by turns. A frame is left out when there is no time for
+// it and the frame of the turn.
 struct InBetweenCamera
 {
 	int levelIndex;
@@ -31750,55 +31751,128 @@ static int InBetweenStep(int from, int to, int mask)
 	return step;
 }
 
-static void DrawInBetweenFrames(const InBetweenCamera& lastTurn, std::chrono::system_clock::time_point turnStart)
+static bool InBetweenFramesOn()
 {
-	static double frameMs = 0;//the last in-between frame drawn and shown
-	if (maxGameFps <= 0 || renderFps <= maxGameFps || x_D41A0_BYTEARRAY_4_struct.paletteMod_51 < 3)
-		return;
-	const int frames = renderFps / maxGameFps;
-	const InBetweenCamera turn = GetInBetweenCamera();
+	return maxGameFps > 0 && renderFps > maxGameFps;
+}
+
+// With in-between frames the turns keep to a timetable of maxGameFps a second, so a late turn is made up by the next ones;
+// a turn off it by over a turn (the first one, after loading) starts a new timetable.
+static std::chrono::system_clock::time_point InBetweenTurnStart()
+{
+	static std::chrono::system_clock::time_point nextTurn;
+	const auto now = std::chrono::system_clock::now();
+	if (!InBetweenFramesOn())
+		return now;
+	const auto turnLength = std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::duration<double, std::milli>(1000.0 / maxGameFps));
+	if (now - nextTurn > turnLength || nextTurn - now > turnLength)
+		nextTurn = now;
+	const auto turnStart = nextTurn;
+	nextTurn += turnLength;
+	return turnStart;
+}
+
+static double inBetweenDrawMs = 0;//DrawGameFrame_2BE30 of the last frame (every frame measures it)
+static double inBetweenBlitMs = 0;//BlendAndBlit_40F80 of the last in-between frame
+
+// The camera part of the way (0 - 1) from the last turn to this turn; false: no way between them (another level or player,
+// or the jump of a new level or life), the camera stays at this turn.
+static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetweenCamera& turn, double part)
+{
 	if (turn.levelIndex != lastTurn.levelIndex || turn.playerIndex != lastTurn.playerIndex)
-		return;
+		return false;
 	const int stepX = InBetweenStep(lastTurn.position.x, turn.position.x, 0xFFFF);
 	const int stepY = InBetweenStep(lastTurn.position.y, turn.position.y, 0xFFFF);
 	const int stepZ = turn.position.z - lastTurn.position.z;
-	if (std::abs(stepX) > 0x800 || std::abs(stepY) > 0x800 || std::abs(stepZ) > 0x800)//a jump (a new level or life): nothing between
-		return;
-	const int stepYaw = InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF);
-	const int stepPitch = turn.rotation.pitch - lastTurn.rotation.pitch;
-	const int stepRoll = InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF);
+	if (std::abs(stepX) > 0x800 || std::abs(stepY) > 0x800 || std::abs(stepZ) > 0x800)
+		return false;
 	auto& player = D41A0_0.array_0x2BDE[turn.levelIndex].struct_0x1d1_2BDE_11695[turn.playerIndex];
+	player.axis_2BDE_11695.x = static_cast<uint16_t>(lastTurn.position.x + static_cast<int>(stepX * part));
+	player.axis_2BDE_11695.y = static_cast<uint16_t>(lastTurn.position.y + static_cast<int>(stepY * part));
+	player.axis_2BDE_11695.z = static_cast<int16_t>(lastTurn.position.z + static_cast<int>(stepZ * part));
+	player.rotation__2BDE_11701.yaw = static_cast<int16_t>(lastTurn.rotation.yaw + static_cast<int>(InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF) * part));
+	player.rotation__2BDE_11701.pitch = static_cast<int16_t>(lastTurn.rotation.pitch + static_cast<int>((turn.rotation.pitch - lastTurn.rotation.pitch) * part));
+	player.rotation__2BDE_11701.roll = static_cast<int16_t>(lastTurn.rotation.roll + static_cast<int>(InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF) * part));
+	return true;
+}
+
+// the camera back at the turn, for the game
+static void RestoreInBetweenCamera(const InBetweenCamera& turn)
+{
+	auto& player = D41A0_0.array_0x2BDE[turn.levelIndex].struct_0x1d1_2BDE_11695[turn.playerIndex];
+	player.axis_2BDE_11695 = turn.position;
+	player.rotation__2BDE_11701 = turn.rotation;
+}
+
+// the part of the turn gone when a frame drawn from now is shown
+static double InBetweenPart(std::chrono::system_clock::time_point turnStart)
+{
+	const std::chrono::duration<double, std::milli> gone = std::chrono::system_clock::now() - turnStart;
+	return std::clamp((gone.count() + inBetweenDrawMs + inBetweenBlitMs) * maxGameFps / 1000.0, 0.0, 1.0);
+}
+
+static double MsSince(std::chrono::system_clock::time_point start)
+{
+	return std::chrono::duration<double, std::milli>(std::chrono::system_clock::now() - start).count();
+}
+
+// The frames before the frame of the turn: as many as there is time for, at most renderFps / maxGameFps - 1, each in its slot.
+// Returns how many were drawn.
+static int DrawInBetweenFrames(const InBetweenCamera& lastTurn, std::chrono::system_clock::time_point turnStart)
+{
+	if (!InBetweenFramesOn() || x_D41A0_BYTEARRAY_4_struct.paletteMod_51 < 3)
+		return 0;
+	const int frames = renderFps / maxGameFps;
+	int drawn = 0;
+	const InBetweenCamera turn = GetInBetweenCamera();
 	const std::chrono::duration<double, std::milli> turnMs(1000.0 / maxGameFps);
-	const auto turnEnd = turnStart + turnMs;
 	for (int frame = 1; frame < frames; frame++)
 	{
-		const auto frameStart = std::chrono::system_clock::now();
-		if (frameStart + std::chrono::duration<double, std::milli>(2 * frameMs) > turnEnd)
+		const std::chrono::duration<double, std::milli> frameMs(inBetweenDrawMs + inBetweenBlitMs);
+		if (std::chrono::system_clock::now() + 2 * frameMs > turnStart + turnMs)
 			break;
-		player.axis_2BDE_11695.x = static_cast<uint16_t>(lastTurn.position.x + stepX * frame / frames);
-		player.axis_2BDE_11695.y = static_cast<uint16_t>(lastTurn.position.y + stepY * frame / frames);
-		player.axis_2BDE_11695.z = static_cast<int16_t>(lastTurn.position.z + stepZ * frame / frames);
-		player.rotation__2BDE_11701.yaw = static_cast<int16_t>(lastTurn.rotation.yaw + stepYaw * frame / frames);
-		player.rotation__2BDE_11701.pitch = static_cast<int16_t>(lastTurn.rotation.pitch + stepPitch * frame / frames);
-		player.rotation__2BDE_11701.roll = static_cast<int16_t>(lastTurn.rotation.roll + stepRoll * frame / frames);
+		if (!PlaceInBetweenCamera(lastTurn, turn, InBetweenPart(turnStart)))
+			break;
+		const auto drawStart = std::chrono::system_clock::now();
 		DrawGameFrame_2BE30();
 		if (x_D41A0_BYTEARRAY_4_struct.showHelp_10)
 			DrawHelpPopUps_871F0();
-		player.axis_2BDE_11695 = turn.position;
-		player.rotation__2BDE_11701 = turn.rotation;
+		RestoreInBetweenCamera(turn);
+		inBetweenDrawMs = MsSince(drawStart);
+		const auto blitStart = std::chrono::system_clock::now();
 		BlendAndBlit_40F80(0);
-		frameMs = std::chrono::duration<double, std::milli>(std::chrono::system_clock::now() - frameStart).count();
+		inBetweenBlitMs = MsSince(blitStart);
+		drawn++;
 		const std::chrono::duration<double, std::milli> wait = turnStart + turnMs * frame / frames - std::chrono::system_clock::now();
 		if (wait.count() >= 1)
 			mydelay(static_cast<int>(wait.count()));
 	}
+	return drawn;
+}
+
+// with --log_level debug: the frames and turns of every second
+static void LogInBetweenFrames(int inBetweenFrames)
+{
+	static auto since = std::chrono::system_clock::now();
+	static int turns = 0;
+	static int frames = 0;
+	turns++;
+	frames += 1 + inBetweenFrames;
+	const double ms = MsSince(since);
+	if (ms < 1000)
+		return;
+	Logger->debug("In-between frames: {:.1f} fps, {:.1f} turns a second, draw {:.1f} ms, blit {:.1f} ms",
+		frames * 1000 / ms, turns * 1000 / ms, inBetweenDrawMs, inBetweenBlitMs);
+	since = std::chrono::system_clock::now();
+	turns = 0;
+	frames = 0;
 }
 
 //long debugcounter_47560_2=0;
 //----- (00047560) --------------------------------------------------------
 void DrawAndEventsInGame_47560(int16_t turn)//228560
 {
-	const auto turnStart = std::chrono::system_clock::now();
+	const auto turnStart = InBetweenTurnStart();
 	SetFrameStart(turnStart);
 	const InBetweenCamera lastTurnCamera = GetInBetweenCamera();
 	if ((CommandLineParams.ModeRegressionsTestType() != -1) && (count_begin == 1))
@@ -31897,8 +31971,16 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 		sub_57570();//nothing draw
 	sub_575C0();//nothing draw
 	PlayEntitySounds_6E150();//nothing draw
-	DrawInBetweenFrames(lastTurnCamera, turnStart);
+	const int inBetweenFrames = DrawInBetweenFrames(lastTurnCamera, turnStart);
+	if (InBetweenFramesOn())
+		LogInBetweenFrames(inBetweenFrames);
+	const InBetweenCamera turnCamera = GetInBetweenCamera();
+	const bool inBetweenCamera = InBetweenFramesOn() && PlaceInBetweenCamera(lastTurnCamera, turnCamera, InBetweenPart(turnStart));
+	const auto drawStart = std::chrono::system_clock::now();
 	DrawGameFrame_2BE30();
+	inBetweenDrawMs = MsSince(drawStart);
+	if (inBetweenCamera)
+		RestoreInBetweenCamera(turnCamera);
 	//adress 2285ff
 	//add_compare(0x002285FF, CommandLineParams.DoDebugafterload());
 	if (CommandLineParams.DoTestRegression()) {
@@ -31944,7 +32026,17 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 	DrawGameDebugText_6FEC0();
 	x_D41A0_BYTEARRAY_4_struct.byteindex_196 = GameTimerTurn_17DB54;
 	if (x_D41A0_BYTEARRAY_4_struct.paletteMod_51 >= 3u)
-		BlendAndBlit_40F80();
+	{
+		if (InBetweenFramesOn())//the blit measured every turn for DrawInBetweenFrames, then the wait for the end of the turn
+		{
+			const auto blitStart = std::chrono::system_clock::now();
+			BlendAndBlit_40F80(0);
+			inBetweenBlitMs = MsSince(blitStart);
+			LockFps(maxGameFps);
+		}
+		else
+			BlendAndBlit_40F80();
+	}
 }
 
 //----- (00047760) --------------------------------------------------------
