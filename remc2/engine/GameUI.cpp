@@ -1002,7 +1002,7 @@ uint8_t CalculateScaleOffset(uint8_t scale)
 }
 
 int debugcounter2 = 0;
-bool largeMapMarks = false;//the marks of the large map (the map screen) are drawn, see mapMarkSize
+int mapMarkSizeNow = 1;//how many times as big the marks being drawn are: mapMarkSize on the large map, minimapMarkSize on the minimap
 //----- (00061A00) --------------------------------------------------------
 void DrawMinimapEntities_B_61A00(int16_t x, int16_t y, int16_t posX, int16_t posY, uint16_t width, uint16_t height, int16_t yaw, int16_t scaling, uint8_t scale)//242a00
 {
@@ -1488,17 +1488,22 @@ void DrawMinimapEntities_B_61A00(int16_t x, int16_t y, int16_t posX, int16_t pos
 							if (v78 > 1)
 								blipSize = 2;
 
-							if (largeMapMarks && mapMarkSize > 1)
+							if (mapMarkSizeNow > 1)
 							{
-								// mapMarkSize: on the large map the marks mapMarkSize times as big, round their place and
-								// inside the map, so creatures and spells are easy to spot on a big screen
-								const int size = blipSize * scale * mapMarkSize;
-								const int startX = (std::max)(0, posx - (size - blipSize * scale) / 2);
-								const int startY = (std::max)(0, posy - (size - blipSize * scale) / 2);
-								const int endX = (std::min)(static_cast<int>(width), posx - (size - blipSize * scale) / 2 + size);
-								const int endY = (std::min)(static_cast<int>(height), posy - (size - blipSize * scale) / 2 + size);
+								// mapMarkSize (large map) and minimapMarkSize (minimap): the marks that many times as big,
+								// round their place and inside the map's rows (the minimap is round), so creatures and
+								// spells are easy to spot on a big screen
+								const int size = blipSize * scale * mapMarkSizeNow;
+								const int start = (size - blipSize * scale) / 2;
+								const int startY = (std::max)(0, posy - start);
+								const int endY = (std::min)(static_cast<int>(height), posy - start + size);
 								for (int y = startY; y < endY; y++)
-									memset(ptrMapBufferStart_v84 + y * screenWidth_18062C + startX, static_cast<uint8_t>(BlipColourIdx_v94), endX - startX);
+								{
+									const int startX = (std::max)({ 0, posx - start, static_cast<int>(x_WORD_F4960[1 + 2 * y]) });
+									const int endX = (std::min)({ static_cast<int>(width), posx - start + size, static_cast<int>(x_WORD_F4960[2 * y]) });
+									if (startX < endX)
+										memset(ptrMapBufferStart_v84 + y * screenWidth_18062C + startX, static_cast<uint8_t>(BlipColourIdx_v94), endX - startX);
+								}
 							}
 							else
 							{

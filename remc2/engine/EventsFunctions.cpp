@@ -21634,6 +21634,7 @@ void DrawGameFrame_2BE30()//20CE30
 					D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].struct_0x1d1_2BDE_11695[D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].ActPlayerIndex_0x00e_2BDE_11244 + 1].rotation__2BDE_11701.yaw,
 					256 / scale,
 					0);
+				mapMarkSizeNow = minimapMarkSize;
 				DrawMinimapEntites_61880(//draw entites in minimap
 					0,
 					0,
@@ -21644,6 +21645,7 @@ void DrawGameFrame_2BE30()//20CE30
 					D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].struct_0x1d1_2BDE_11695[D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].ActPlayerIndex_0x00e_2BDE_11244 + 1].rotation__2BDE_11701.yaw,
 					256 / scale,
 					scale);
+				mapMarkSizeNow = 1;
 				DrawMinimapMarks_644F0(
 					0,
 					0,
@@ -21762,7 +21764,7 @@ void DrawGameFrame_2BE30()//20CE30
 			204 / scale,
 			1);
 
-		largeMapMarks = true;
+		mapMarkSizeNow = mapMarkSize;
 		DrawMinimapEntites_61880(
 			0,
 			0,
@@ -21773,7 +21775,7 @@ void DrawGameFrame_2BE30()//20CE30
 			D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].struct_0x1d1_2BDE_11695[actPlayerIndex + 1].rotation__2BDE_11701.yaw,
 			204 / scale,
 			scale);
-		largeMapMarks = false;
+		mapMarkSizeNow = 1;
 
 		viewPort.SetRenderViewPortSize_40BF0(locViewportPosx, 0, locViewportWidth, locViewportHeight);
 

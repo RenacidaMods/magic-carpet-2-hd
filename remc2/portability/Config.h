@@ -88,6 +88,7 @@ public:
 			bool m_WidescreenFov = false;
 			bool m_SpriteAspectFix = false;
 			int m_MapMarkSize = 1;
+			int m_MinimapMarkSize = 1;
 		};
 
 		struct Threading

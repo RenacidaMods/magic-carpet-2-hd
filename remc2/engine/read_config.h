@@ -58,6 +58,7 @@ extern float fogScale;
 extern bool widescreenFov;
 extern bool spriteAspectFix;
 extern int mapMarkSize;
+extern int minimapMarkSize;
 extern bool openGLRender;
 extern float sizePercentToThreadRender;
 extern float sizePercentToThreadRenderSprites;

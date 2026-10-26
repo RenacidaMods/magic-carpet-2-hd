@@ -377,6 +377,8 @@ Config::Settings::GameDetail Config::GetGameDetail(const json& graphics)
 			gameDetailValues.m_SpriteAspectFix = ReadBoolValue(gameDetail, "spriteAspectFix");
 		if (gameDetail.contains("mapMarkSize"))
 			gameDetailValues.m_MapMarkSize = ReadIntValue(gameDetail, "mapMarkSize");
+		if (gameDetail.contains("minimapMarkSize"))
+			gameDetailValues.m_MinimapMarkSize = ReadIntValue(gameDetail, "minimapMarkSize");
 	}
 	return gameDetailValues;
 }
@@ -535,6 +537,7 @@ void Config::SaveGameDetailToDoc(Config::Settings::GameDetail gameDetail)
 	SetBool(gd, "widescreenFov", gameDetail.m_WidescreenFov);
 	SetBool(gd, "spriteAspectFix", gameDetail.m_SpriteAspectFix);
 	SetInt(gd, "mapMarkSize", gameDetail.m_MapMarkSize);
+	SetInt(gd, "minimapMarkSize", gameDetail.m_MinimapMarkSize);
 }
 
 void Config::SaveThreadingToDoc(Config::Settings::Threading threading)
