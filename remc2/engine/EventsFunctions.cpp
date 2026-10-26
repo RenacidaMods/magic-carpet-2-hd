@@ -31775,8 +31775,78 @@ static std::chrono::system_clock::time_point InBetweenTurnStart()
 static double inBetweenDrawMs = 0;//DrawGameFrame_2BE30 of the last frame (every frame measures it)
 static double inBetweenBlitMs = 0;//BlendAndBlit_40F80 of the last in-between frame
 
-// The camera part of the way (0 - 1) from the last turn to this turn; false: no way between them (another level or player,
-// or the jump of a new level or life), the camera stays at this turn.
+// smoothEntities: the entities (creatures, spells, ...) also part of the way from the last turn, by the part of the camera.
+// An entity moves only when its slot holds the same kind of entity as at the start of the turn (id, class, model) and it
+// did not jump (new, removed, reused or teleported); its animation frame and facing still change by turns.
+struct InBetweenEntity
+{
+	bool noted;
+	uint16_t id;
+	uint8_t entityClass;
+	uint8_t model;
+	axis_3d position;
+};
+static InBetweenEntity inBetweenEntities[1001];//at the start of the turn
+static axis_3d inBetweenEntitiesTurn[1001];//the positions of the turn, put back after drawing
+static bool inBetweenEntitiesPlaced[1001];
+static int inBetweenEntitiesMoved = 0;//of the last frame, for LogInBetweenFrames
+
+static void NoteInBetweenEntities()
+{
+	if (!smoothEntities)
+		return;
+	for (int i = 1; i < 1001; i++)
+	{
+		const type_entity_0x6E8E* entity = Entities_EA3E4[i];
+		InBetweenEntity& noted = inBetweenEntities[i];
+		noted.noted = entity != nullptr;
+		if (!entity)
+			continue;
+		noted.id = entity->id_0x1A_26;
+		noted.entityClass = entity->class_0x3F_63;
+		noted.model = entity->model_0x40_64;
+		noted.position = entity->position_0x4C_76;
+	}
+}
+
+static void PlaceInBetweenEntities(double part)
+{
+	inBetweenEntitiesMoved = 0;
+	if (!smoothEntities)
+		return;
+	for (int i = 1; i < 1001; i++)
+	{
+		type_entity_0x6E8E* entity = Entities_EA3E4[i];
+		const InBetweenEntity& noted = inBetweenEntities[i];
+		if (!entity || !noted.noted || entity->id_0x1A_26 != noted.id || entity->class_0x3F_63 != noted.entityClass || entity->model_0x40_64 != noted.model)
+			continue;
+		const axis_3d& position = entity->position_0x4C_76;
+		const int stepX = InBetweenStep(noted.position.x, position.x, 0xFFFF);
+		const int stepY = InBetweenStep(noted.position.y, position.y, 0xFFFF);
+		const int stepZ = position.z - noted.position.z;
+		if ((!stepX && !stepY && !stepZ) || std::abs(stepX) > 0x800 || std::abs(stepY) > 0x800 || std::abs(stepZ) > 0x800)
+			continue;
+		inBetweenEntitiesTurn[i] = position;
+		inBetweenEntitiesPlaced[i] = true;
+		inBetweenEntitiesMoved++;
+		entity->position_0x4C_76.x = static_cast<uint16_t>(noted.position.x + static_cast<int>(stepX * part));
+		entity->position_0x4C_76.y = static_cast<uint16_t>(noted.position.y + static_cast<int>(stepY * part));
+		entity->position_0x4C_76.z = static_cast<int16_t>(noted.position.z + static_cast<int>(stepZ * part));
+	}
+}
+
+static void RestoreInBetweenEntities()
+{
+	for (int i = 1; i < 1001; i++)
+		if (inBetweenEntitiesPlaced[i])
+		{
+			Entities_EA3E4[i]->position_0x4C_76 = inBetweenEntitiesTurn[i];
+			inBetweenEntitiesPlaced[i] = false;
+		}
+}
+
+// The camera (and with smoothEntities the entities) part of the way (0 - 1) from the last turn to this turn; false: no way
+// between them (another level or player, or the jump of a new level or life), all stays at this turn.
 static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetweenCamera& turn, double part)
 {
 	if (turn.levelIndex != lastTurn.levelIndex || turn.playerIndex != lastTurn.playerIndex)
@@ -31793,15 +31863,17 @@ static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetwee
 	player.rotation__2BDE_11701.yaw = static_cast<int16_t>(lastTurn.rotation.yaw + static_cast<int>(InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF) * part));
 	player.rotation__2BDE_11701.pitch = static_cast<int16_t>(lastTurn.rotation.pitch + static_cast<int>((turn.rotation.pitch - lastTurn.rotation.pitch) * part));
 	player.rotation__2BDE_11701.roll = static_cast<int16_t>(lastTurn.rotation.roll + static_cast<int>(InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF) * part));
+	PlaceInBetweenEntities(part);
 	return true;
 }
 
-// the camera back at the turn, for the game
+// the camera (and the entities) back at the turn, for the game
 static void RestoreInBetweenCamera(const InBetweenCamera& turn)
 {
 	auto& player = D41A0_0.array_0x2BDE[turn.levelIndex].struct_0x1d1_2BDE_11695[turn.playerIndex];
 	player.axis_2BDE_11695 = turn.position;
 	player.rotation__2BDE_11701 = turn.rotation;
+	RestoreInBetweenEntities();
 }
 
 // the part of the turn gone when a frame drawn from now is shown
@@ -31861,8 +31933,8 @@ static void LogInBetweenFrames(int inBetweenFrames)
 	const double ms = MsSince(since);
 	if (ms < 1000)
 		return;
-	Logger->debug("In-between frames: {:.1f} fps, {:.1f} turns a second, draw {:.1f} ms, blit {:.1f} ms",
-		frames * 1000 / ms, turns * 1000 / ms, inBetweenDrawMs, inBetweenBlitMs);
+	Logger->debug("In-between frames: {:.1f} fps, {:.1f} turns a second, draw {:.1f} ms, blit {:.1f} ms, entities moved {}",
+		frames * 1000 / ms, turns * 1000 / ms, inBetweenDrawMs, inBetweenBlitMs, inBetweenEntitiesMoved);
 	since = std::chrono::system_clock::now();
 	turns = 0;
 	frames = 0;
@@ -31875,6 +31947,8 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 	const auto turnStart = InBetweenTurnStart();
 	SetFrameStart(turnStart);
 	const InBetweenCamera lastTurnCamera = GetInBetweenCamera();
+	if (InBetweenFramesOn())
+		NoteInBetweenEntities();
 	if ((CommandLineParams.ModeRegressionsTestType() != -1) && (count_begin == 1))
 		debugcounter_47560++;
 	PaletteChanges_47760();
