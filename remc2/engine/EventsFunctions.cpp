@@ -31184,6 +31184,56 @@ uint8_t testarraymain[168] = {
 
 int resindex_begin = 0;
 
+// --load_save: the save waiting to be loaded over the level (1 or 2, 0 none) and the turns until then
+static int pendingLoadSave = 0;
+static int pendingLoadSaveTurns = 0;
+
+// The waiting save over the level, a few turns after the level started (as the pause menu's load does, with the screen set
+// up), keeping the spells of the save; then the automatic save of the level start (slot 2) is made of it, so a lost life
+// goes back to it.
+static void LoadPendingSave()
+{
+	if (LoadLevel_555D0(pendingLoadSave - 1, x_D41A0_BYTEARRAY_4_struct.levelnumber_43w, false, true))
+		Logger->info("--load_save: save {} loaded", pendingLoadSave);
+	else
+		Logger->error("--load_save: save {} could not be loaded", pendingLoadSave);
+	pendingLoadSave = 0;
+	x_D41A0_BYTEARRAY_4_struct.setting_38545 &= ~0x80;
+	sub_57640();
+}
+
+// --load_save: the in-level save to start in (1 the pause menu save, 2 the automatic save of the level start, 0 the newer of
+// them) and its level from its SVER file ({15, level}); 0 when there is none
+static int ChooseLoadSave(int slot, int16_t& level)
+{
+	if (slot < 0)
+		return 0;
+	int chosen = 0;
+	std::filesystem::file_time_type newest;
+	for (int index = 1; index <= 2; index++)
+	{
+		if (slot != 0 && slot != index)
+			continue;
+		const std::string path = SaveDirectory() + "/SVER" + std::to_string(index) + ".DAT";
+		std::error_code error;
+		const auto time = std::filesystem::last_write_time(path, error);
+		if (error || (chosen && time <= newest))
+			continue;
+		int32_t data[2] = { 0, 0 };
+		FILE* file = fopen(path.c_str(), "rb");
+		if (!file)
+			continue;
+		const bool read = fread(data, sizeof(int32_t), 2, file) == 2;
+		fclose(file);
+		if (!read || data[0] != 15)
+			continue;
+		chosen = index;
+		newest = time;
+		level = static_cast<int16_t>(data[1]);
+	}
+	return chosen;
+}
+
 //----- (00046830) --------------------------------------------------------
 void sub_46830_main_loop(unsigned __int16 actLevel)//227830
 {//graphics already inited
@@ -31211,6 +31261,16 @@ void sub_46830_main_loop(unsigned __int16 actLevel)//227830
 			x_D41A0_BYTEARRAY_4_struct.OptionsSettingFlag_24 |= LEVEL_LOADED_FROM_ARG;
 		skipMenus = true;
 	}
+	int16_t loadSaveLevel = -1;
+	int loadSave = ChooseLoadSave(CommandLineParams.GetLoadSave(), loadSaveLevel);
+	if (loadSave > 0)
+	{
+		setLevel = loadSaveLevel;//without LEVEL_LOADED_FROM_ARG: the spells come from the save
+		skipMenus = true;
+		Logger->info("--load_save: save {} of level {}", loadSave, loadSaveLevel);
+	}
+	else if (CommandLineParams.GetLoadSave() >= 0)
+		Logger->error("--load_save: no save found");
 
 	if (CommandLineParams.DoStateMonitor()) {
 		g_state_monitor.Init();
@@ -31345,6 +31405,13 @@ void sub_46830_main_loop(unsigned __int16 actLevel)//227830
 			//!!!!!!!!!!! debug fix it
 
 			LoadSpr_47160();
+			if (loadSave > 0)//loaded by DrawAndEventsInGame_47560 once the level runs; no automatic save of the level start before it
+			{
+				pendingLoadSave = loadSave;
+				pendingLoadSaveTurns = 10;
+				x_D41A0_BYTEARRAY_4_struct.setting_38545 |= 0x80;
+				loadSave = 0;
+			}
 			// debug !!!
 			//sub_692A0(testarraymain);
 			// debug !!!
@@ -31974,6 +32041,8 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 {
 	const auto turnStart = InBetweenTurnStart();
 	SetFrameStart(turnStart);
+	if (pendingLoadSave > 0 && x_D41A0_BYTEARRAY_4_struct.paletteMod_51 >= 3 && --pendingLoadSaveTurns <= 0)
+		LoadPendingSave();
 	const InBetweenCamera lastTurnCamera = GetInBetweenCamera();
 	if (InBetweenFramesOn())
 		NoteInBetweenEntities();

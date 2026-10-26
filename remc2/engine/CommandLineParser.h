@@ -87,6 +87,7 @@ class CommandLineParser {
         std::string GetMemimagesPath() const {return m_memimages_path;};
         std::string GetConfigFilePath() const { return m_config_file_path; };
 		int16_t GetSetLevel() const { return m_set_level; };
+		int GetLoadSave() const { return m_load_save; };
 		uint32_t GetMaxRegressionsSteps() const { return m_max_regressions_steps;};
 		std::string GetCustomLevelPath() const { return m_custom_level_path; };
 		std::string GetLogLevelStr() const { return m_log_level_str; };
@@ -156,6 +157,7 @@ class CommandLineParser {
         std::string m_memimages_path;
         std::string m_config_file_path;
         uint16_t m_set_level;
+		int m_load_save = -1;
 		uint32_t m_max_regressions_steps;
         std::string m_custom_level_path;
 		std::string m_log_level_str;

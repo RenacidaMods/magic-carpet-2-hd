@@ -257,8 +257,9 @@ bool SaveLevelSVER_55450(uint8_t savefileindex, int32_t levelNumber, char* savef
 }
 
 //----- (000555D0) --------------------------------------------------------
-bool LoadLevel_555D0(uint8_t fileindex, int levelindex, bool loadRegressionTest)//2365d0
-{	
+// keepSavedSpells: the spells and experience of the save (--load_save into a fresh level), else those of the player now
+bool LoadLevel_555D0(uint8_t fileindex, int levelindex, bool loadRegressionTest, bool keepSavedSpells)//2365d0
+{
 	int temp0x219A;
 	int temp0x219E;
 	int temp0x21A2;
@@ -305,7 +306,8 @@ bool LoadLevel_555D0(uint8_t fileindex, int levelindex, bool loadRegressionTest)
 				{
 					sub_55100(2);
 					sub_57680_FixPointersAfterLoad();
-					sub_549A0(&D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].dword_0x3E6_2BE4_12228.str_611, &x_D41A0_BYTEARRAY_4_struct.byteindex_256ar.dword_0x3E6_2BE4_12228.str_611);
+					if (!keepSavedSpells)
+						sub_549A0(&D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc].dword_0x3E6_2BE4_12228.str_611, &x_D41A0_BYTEARRAY_4_struct.byteindex_256ar.dword_0x3E6_2BE4_12228.str_611);
 					sub_49F90();
 					D41A0_0.dword_0x11e6 = -1;
 					sub_55AB0(&D41A0_0.array_0x2BDE[D41A0_0.LevelIndex_0xc]);

@@ -277,6 +277,11 @@ void CommandLineParser::InterpretParams() {
 				m_set_level = level;
 			}
 		}
+		else if (param == "--load_save") {
+			// "latest" (the newer of the two), 1 (the pause menu save) or 2 (the automatic save of the level start)
+			std::string slotStr = *(++p);
+			m_load_save = slotStr == "latest" ? 0 : std::stoi(slotStr);
+		}
 		else if (param == "--set_max_regressions_steps") {
 			std::string maxStepsStr = *(++p);
 			int maxSteps = std::stoi(maxStepsStr);
