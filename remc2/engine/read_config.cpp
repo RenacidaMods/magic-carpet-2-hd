@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include <filesystem>
 #include <stdio.h>
+#include <thread>
+#include <vector>
 #include <stdlib.h>
 
 #ifdef _MSC_VER
@@ -36,6 +38,26 @@ static bool DisplayResolution(int index, int& width, int& height)
 		height = mode.h;
 	}
 	return found;
+}
+
+// the processor's cores (not their hardware threads); Windows tells, elsewhere half the hardware threads
+static int ProcessorCores()
+{
+#ifdef _MSC_VER
+	DWORD length = 0;
+	GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &length);
+	std::vector<char> buffer(length);
+	if (length > 0 && GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &length))
+	{
+		int cores = 0;
+		for (DWORD offset = 0; offset < length; offset += reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data() + offset)->Size)
+			cores++;
+		if (cores > 0)
+			return cores;
+	}
+#endif
+	const int hardwareThreads = static_cast<int>(std::thread::hardware_concurrency());
+	return hardwareThreads >= 4 ? hardwareThreads / 2 : (hardwareThreads > 0 ? hardwareThreads : 1);
 }
 
 int config_skip_screen;
@@ -289,6 +311,10 @@ bool SetConfig() {
 	{
 		assignToSpecificCores = settingsValue.m_Graphics.m_Threading.m_AssignToSpecificCores;
 
+		// 0: one fewer than the processor's cores, for the game thread, at most 6 (on a Ryzen 9 5950X at 3840x2160, 6 was
+		// fastest, 7 about the same and 8 or more slower: more coordination, and the threads spread over its two 8-core halves)
+		if (numberOfRenderThreads == 0)
+			numberOfRenderThreads = ProcessorCores() - 1 > 6 ? 6 : ProcessorCores() - 1;
 		if (numberOfRenderThreads < 1)
 		{
 			numberOfRenderThreads = 1;
