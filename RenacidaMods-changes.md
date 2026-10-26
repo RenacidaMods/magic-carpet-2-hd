@@ -17,6 +17,9 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 | [Sprites at their intended shape](#sprites-at-their-intended-shape) | `graphics.gameDetail.spriteAspectFix` (off) | [8b17795](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8b177953af386332d8afe438c4d5d04e11ab35e7) | GameRenderNG.cpp, config files |
 | [Choice of SDL render driver](#choice-of-sdl-render-driver) | `graphics.renderDriver` (SDL's choice) | [1204e0f](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1204e0f823c89ea916983f95fcfbf6b5eea5c56e) | port_sdl_vga_mouse.cpp, config files |
 | [Wide screen view](#wide-screen-view) | `graphics.gameDetail.widescreenFov` (off) | [2f9f033](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/2f9f0333aab8563ed58e7ee0d92549806d66260f) | GameRenderNG.cpp/.h, config files |
+| [Bigger marks on the maps](#bigger-marks-on-the-maps) | `graphics.gameDetail.mapMarkSize`, `graphics.gameDetail.minimapMarkSize` (1, the original size) | [bcff28e](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/bcff28e57), [599fa46](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/599fa463a) | GameUI.cpp/.h, EventsFunctions.cpp, config files |
+| [Draw at the screen's resolution](#draw-at-the-screens-resolution) | `graphics.gameDetail.gameResWidth` and `gameResHeight` 0 | [1698882](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1698882cd) | read_config.cpp |
+| [Render threads picked automatically](#render-threads-picked-automatically) | `graphics.threading.numberOfRenderThreads` 0 | [18b5671](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/18b56715e) | read_config.cpp |
 | [Line clipping crash fix](#line-clipping-crash-fix) | always on | [8d44e19](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8d44e198ae8458b7b64534e72ebc104f59c77f18) | GameUI.cpp |
 | [Close button quits](#close-button-quits) | always on | [c279b5d](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/c279b5d1daea583cbf0599a8f0455e7e26119f2e), [8afc6fd](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8afc6fd76fafa555ed0d69277f2f18f40dc2497b) | port_sdl_vga_mouse.cpp |
 | [Mouse left alone when the window isn't active](#mouse-left-alone-when-the-window-isnt-active) | always on | [5adbc12](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/5adbc12d324927bdbdef24f23daf6fa28c48db02) | port_sdl_vga_mouse.cpp |
@@ -65,6 +68,26 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 **Setting:** `"widescreenFov": true` in `graphics.gameDetail`. Off in the RenacidaMods release.
 
 **How:** the NG renderer scales its focal length, pitch shift and sky by the view width, which zooms a 16:9 view in by about 22% compared with 4:3. With this setting they use the width of a 4:3 view of the same height instead, so a wide screen keeps the 4:3 view top to bottom and shows more at the sides. It can look a bit fish-eyed, and undrawn land can show in the corners when turning, which is why the release leaves it off.
+
+## Bigger marks on the maps
+
+**Settings:** `"mapMarkSize": 3` (the large map) and `"minimapMarkSize": 2` (the in-flight minimap) in `graphics.gameDetail`, 1 to 8.
+
+**Why:** `DrawMinimapEntities_B_61A00` draws each creature, spell and person as a square of 1 or 2 pixels times `gameUiScale`. At 3840x2160 with `gameUiScale` 2 that's 2 to 4 pixels across, easy to miss on a big screen. Wild creatures are black on day levels and white on night and cave levels.
+
+**How:** the map screen and the minimap set `mapMarkSizeNow` around their `DrawMinimapEntites_61880` call, and the square marks are drawn that many times as big, centred on their place. Each row is cut to the map's own span (`x_WORD_F4960`), so marks stay inside the round minimap. Icon marks (castles, flags) are left at their size, as enlarging them makes them blocky.
+
+## Draw at the screen's resolution
+
+**Setting:** `"gameResWidth": 0` and `"gameResHeight": 0` in `graphics.gameDetail`. The RenacidaMods release uses this.
+
+**How:** with both at 0, `SetConfig` asks SDL for the desktop mode of the display the game is shown on (`displayIndex`, else the first), in real pixels, and draws at that: 3840x2160 on a 4K screen, 1920x1080 on a 1080p one. If SDL can't tell, it uses 1920x1080. Any other values work as before. The start-up log gives the game resolution next to the SDL renderer.
+
+## Render threads picked automatically
+
+**Setting:** `"numberOfRenderThreads": 0` in `graphics.threading` (with `isActive` true). The RenacidaMods release uses this.
+
+**How:** `SetConfig` uses one fewer than the processor's cores (leaving one for the game thread), at most 6. On Windows the cores come from `GetLogicalProcessorInformationEx`, elsewhere half of `std::thread::hardware_concurrency`. Before, 0 meant one thread. Measured on a Ryzen 9 5950X at 3840x2160: 6 threads about 70 fps, 4 about 68, 7 about 66, and 8 or more slower (more coordination, and the threads spread over its two 8-core halves).
 
 ## Line clipping crash fix
 
