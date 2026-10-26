@@ -22,6 +22,7 @@
 int config_skip_screen;
 int texturepixels = 32;
 int maxGameFps = 30;
+int renderFps = 0;
 int menuFps = 30;
 int displayIndex = 0;
 int windowResWidth = 640;
@@ -134,6 +135,7 @@ bool SetConfig() {
 
 	//Game
 	maxGameFps = settingsValue.m_Game.m_MaxGameFps;
+	renderFps = settingsValue.m_Game.m_RenderFps;
 	if (settingsValue.m_Game.m_SkipIntro)
 		config_skip_screen = 1;
 	else

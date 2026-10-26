@@ -731,7 +731,7 @@ void sub_3B4D0_fill_unk_D4350_256(int a1);
 // char sub_3C080_draw_terrain_and_particles(int a1, int a2, __int16 a3, __int16 a4, __int16 a5, signed int a6, int a7, __int16 a8, int a9);
 // unsigned __int16 sub_3E360_draw_particles(int a1, int a2);
 // unsigned __int16 sub_3FD60(int a1, int a2);
-void BlendAndBlit_40F80();
+void BlendAndBlit_40F80(int fps = maxGameFps);
 // int sub_43830_generate_level_map(unsigned int a1, int a2);
 // unsigned int sub_43970(unsigned int a1);
 // unsigned int sub_439A0(unsigned int a1, unsigned __int16 a2);
@@ -30738,7 +30738,8 @@ int sub_40D10()//221d10//fix vga
 // 180628: using guessed type int pdwScreenBuffer_351628;
 
 //----- (00040F80) --------------------------------------------------------
-void BlendAndBlit_40F80()//221f80
+// fps: the frame limit of the blit (LockFps), 0 none
+void BlendAndBlit_40F80(int fps)//221f80
 {
 	// ── Half-size blending
 	if (D41A0_0.m_GameSettings.m_Display.m_uiScreenSize == 2 && !x_BYTE_D478C) {
@@ -30777,22 +30778,22 @@ void BlendAndBlit_40F80()//221f80
 		if (x_BYTE_D478C)
 			sub_BD2CB(unk_F0A20x);//maybe for virtual head set
 		else if ((!DefaultResolutions()) && (x_WORD_180660_VGA_type_resolution != 1))
-			VGA_BlitAny(maxGameFps);
+			VGA_BlitAny(fps);
 		else if (x_WORD_180660_VGA_type_resolution & 1)
-			sub_90478_VGA_Blit320(maxGameFps);
+			sub_90478_VGA_Blit320(fps);
 		else
-			sub_75200_VGA_Blit640(480, maxGameFps);
+			sub_75200_VGA_Blit640(480, fps);
 	}
 	else if (D41A0_0.m_GameSettings.str_0x2192.xxxx_0x2193 && D41A0_0.m_GameSettings.m_Display.m_uiScreenSize)
 		sub_BD3DD();
 	else if (x_BYTE_D478C)
 		sub_BD1B6(unk_F0A20x);
 	else if ((!DefaultResolutions()) && (x_WORD_180660_VGA_type_resolution != 1))
-		VGA_BlitAny(maxGameFps);
+		VGA_BlitAny(fps);
 	else if (x_WORD_180660_VGA_type_resolution & 1)
-		sub_90478_VGA_Blit320(maxGameFps);
+		sub_90478_VGA_Blit320(fps);
 	else
-		sub_75200_VGA_Blit640(480, maxGameFps);
+		sub_75200_VGA_Blit640(480, fps);
 }
 
 void sub_41A90_VGA_Palette_install(TColor* bufferx)//222a90
@@ -31718,11 +31719,88 @@ void intervalsave(int index) {
 	D41A0_0 = temp0x39;
 };
 
+// renderFps over maxGameFps: the game still runs maxGameFps turns a second (its speed), and between two turns more frames
+// are drawn with the camera part of the way from the last turn to this one, so the view moves smoothly at up to renderFps.
+// The entities still move by turns. A frame is left out when there is no time for it and the frame of the turn.
+struct InBetweenCamera
+{
+	int levelIndex;
+	int playerIndex;
+	axis_3d position;
+	axis_4d rotation;
+};
+
+static InBetweenCamera GetInBetweenCamera()
+{
+	InBetweenCamera camera;
+	camera.levelIndex = D41A0_0.LevelIndex_0xc;
+	camera.playerIndex = D41A0_0.array_0x2BDE[camera.levelIndex].ActPlayerIndex_0x00e_2BDE_11244 + 1;
+	const auto& player = D41A0_0.array_0x2BDE[camera.levelIndex].struct_0x1d1_2BDE_11695[camera.playerIndex];
+	camera.position = player.axis_2BDE_11695;
+	camera.rotation = player.rotation__2BDE_11701;
+	return camera;
+}
+
+// from - to the shortest way round: mask 0xFFFF for map positions, 0x7FF for angles
+static int InBetweenStep(int from, int to, int mask)
+{
+	int step = (to - from) & mask;
+	if (step > mask / 2)
+		step -= mask + 1;
+	return step;
+}
+
+static void DrawInBetweenFrames(const InBetweenCamera& lastTurn, std::chrono::system_clock::time_point turnStart)
+{
+	static double frameMs = 0;//the last in-between frame drawn and shown
+	if (maxGameFps <= 0 || renderFps <= maxGameFps || x_D41A0_BYTEARRAY_4_struct.paletteMod_51 < 3)
+		return;
+	const int frames = renderFps / maxGameFps;
+	const InBetweenCamera turn = GetInBetweenCamera();
+	if (turn.levelIndex != lastTurn.levelIndex || turn.playerIndex != lastTurn.playerIndex)
+		return;
+	const int stepX = InBetweenStep(lastTurn.position.x, turn.position.x, 0xFFFF);
+	const int stepY = InBetweenStep(lastTurn.position.y, turn.position.y, 0xFFFF);
+	const int stepZ = turn.position.z - lastTurn.position.z;
+	if (std::abs(stepX) > 0x800 || std::abs(stepY) > 0x800 || std::abs(stepZ) > 0x800)//a jump (a new level or life): nothing between
+		return;
+	const int stepYaw = InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF);
+	const int stepPitch = turn.rotation.pitch - lastTurn.rotation.pitch;
+	const int stepRoll = InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF);
+	auto& player = D41A0_0.array_0x2BDE[turn.levelIndex].struct_0x1d1_2BDE_11695[turn.playerIndex];
+	const std::chrono::duration<double, std::milli> turnMs(1000.0 / maxGameFps);
+	const auto turnEnd = turnStart + turnMs;
+	for (int frame = 1; frame < frames; frame++)
+	{
+		const auto frameStart = std::chrono::system_clock::now();
+		if (frameStart + std::chrono::duration<double, std::milli>(2 * frameMs) > turnEnd)
+			break;
+		player.axis_2BDE_11695.x = static_cast<uint16_t>(lastTurn.position.x + stepX * frame / frames);
+		player.axis_2BDE_11695.y = static_cast<uint16_t>(lastTurn.position.y + stepY * frame / frames);
+		player.axis_2BDE_11695.z = static_cast<int16_t>(lastTurn.position.z + stepZ * frame / frames);
+		player.rotation__2BDE_11701.yaw = static_cast<int16_t>(lastTurn.rotation.yaw + stepYaw * frame / frames);
+		player.rotation__2BDE_11701.pitch = static_cast<int16_t>(lastTurn.rotation.pitch + stepPitch * frame / frames);
+		player.rotation__2BDE_11701.roll = static_cast<int16_t>(lastTurn.rotation.roll + stepRoll * frame / frames);
+		DrawGameFrame_2BE30();
+		if (x_D41A0_BYTEARRAY_4_struct.showHelp_10)
+			DrawHelpPopUps_871F0();
+		player.axis_2BDE_11695 = turn.position;
+		player.rotation__2BDE_11701 = turn.rotation;
+		BlendAndBlit_40F80(0);
+		frameMs = std::chrono::duration<double, std::milli>(std::chrono::system_clock::now() - frameStart).count();
+		const std::chrono::duration<double, std::milli> wait = turnStart + turnMs * frame / frames - std::chrono::system_clock::now();
+		if (wait.count() >= 1)
+			mydelay(static_cast<int>(wait.count()));
+	}
+}
+
 //long debugcounter_47560_2=0;
 //----- (00047560) --------------------------------------------------------
 void DrawAndEventsInGame_47560(int16_t turn)//228560
 {
-	SetFrameStart(std::chrono::system_clock::now());
+	const auto turnStart = std::chrono::system_clock::now();
+	SetFrameStart(turnStart);
+	const InBetweenCamera lastTurnCamera = GetInBetweenCamera();
 	if ((CommandLineParams.ModeRegressionsTestType() != -1) && (count_begin == 1))
 		debugcounter_47560++;
 	PaletteChanges_47760();
@@ -31819,6 +31897,7 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 		sub_57570();//nothing draw
 	sub_575C0();//nothing draw
 	PlayEntitySounds_6E150();//nothing draw
+	DrawInBetweenFrames(lastTurnCamera, turnStart);
 	DrawGameFrame_2BE30();
 	//adress 2285ff
 	//add_compare(0x002285FF, CommandLineParams.DoDebugafterload());

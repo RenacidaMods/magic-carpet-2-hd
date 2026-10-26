@@ -112,6 +112,7 @@ public:
 		struct Game
 		{
 			int m_MaxGameFps = 0;
+			int m_RenderFps = 0;
 			bool m_SkipIntro = false;
 		};
 
