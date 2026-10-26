@@ -989,7 +989,8 @@ void SetMouseEvents(uint32_t buttons, int16_t x, int16_t y)
 void VGA_Set_mouse(int16_t x, int16_t y) 
 {
 	ScaleDownMouseCoordsToVga(x, y);
-	SDL_WarpMouseInWindow(m_window, x, y);
+	if (SDL_GetWindowFlags(m_window) & SDL_WINDOW_INPUT_FOCUS)//only the active window: the warp moves the system cursor, away from the window in use
+		SDL_WarpMouseInWindow(m_window, x, y);
 	joystick_set_env(x, y);
 }
 
