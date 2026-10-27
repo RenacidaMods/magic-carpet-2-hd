@@ -5692,6 +5692,21 @@ signed int sub_13270(type_entity_0x6E8E* a1x)//1f4270
 // 8C278: using guessed type int rand(void);
 // EA3E4: using guessed type int Entities_EA3E4[];
 
+// fixAiPossess: whether the possession missile the wizard would cast now finds something to lock onto. Like sub_69900 the missile
+// leaves from the wizard along its heading plus aim offset, with the pitch sub_14E10 aims at the wizard's target, and looks once with sub_67CB0
+static bool PossessTargetAhead(type_entity_0x6E8E* wizard)
+{
+	type_entity_0x6E8E* target = Entities_EA3E4[wizard->word_0x96_150];
+	if (target <= Entities_EA3E4[0])
+		return false;
+	type_entity_0x6E8E missile = *wizard;
+	missile.model_0x40_64 = (uint8_t)spell_t::possession;
+	missile.yaw_0x1C_28 = wizard->dword_0xA4_164x->nextEntity_0x18_24 + wizard->yaw_0x1C_28;
+	missile.pitch_0x1E_30 = wizard->dword_0xA4_164x->entityIndex2_0x1A_26 + Maths::sub_58210_radix_tan(&wizard->position_0x4C_76, &target->position_0x4C_76);
+	missile.position_0x4C_76.z += wizard->array_0x52_82.fov;
+	return sub_67CB0(&missile) != 0;
+}
+
 //----- (000133B0) --------------------------------------------------------
 signed int sub_133B0(type_entity_0x6E8E* a1x)//1f43b0
 {
@@ -5735,7 +5750,8 @@ signed int sub_133B0(type_entity_0x6E8E* a1x)//1f43b0
 	}
 	else
 	{
-		if ((unsigned int)Maths::EuclideanDistXY_584D0(&a1x->position_0x4C_76, &v2x->position_0x4C_76) > 0x6400000)
+		//fixAiPossess: the original casts possession here at nothing in particular (the target is the wizard's own castle), cast it only when the missile would find something to lock onto
+		if ((unsigned int)Maths::EuclideanDistXY_584D0(&a1x->position_0x4C_76, &v2x->position_0x4C_76) > 0x6400000 && (!fixAiPossess || PossessTargetAhead(a1x)))
 		{
 			for (k = a1x->dword_0xA4_164x->str_611.SpellLevels_0x41D_1053z.SpellIndex[1]; k >= 0; k--)
 			{
@@ -5788,6 +5804,9 @@ signed int sub_135C0(type_entity_0x6E8E* a1x)//1f45c0
 	a1x->roll_0x20_32 = Maths::sub_581E0_maybe_tan2(&a1x->position_0x4C_76, &v1x->position_0x4C_76);
 	if (sub_14C90(a1x, v1x, 1024, 3072))
 	{
+		//fixAiPossess: the original keeps casting possession at the ball while it stays on this task, even once the ball is its own
+		if (fixAiPossess && v1x->playerEntityIndex_0x94_148 == a1x->id_0x1A_26)
+			goto LABEL_17;
 		for (i = a1x->dword_0xA4_164x->str_611.SpellLevels_0x41D_1053z.SpellIndex[1]; i >= 0; i--)
 		{
 			v7 = sub_15F20(a1x, i, 1);
@@ -5798,7 +5817,14 @@ signed int sub_135C0(type_entity_0x6E8E* a1x)//1f45c0
 		{
 			v3 = Maths::sub_581E0_maybe_tan2(&a1x->position_0x4C_76, &v1x->position_0x4C_76);
 			if ((unsigned __int16)sub_582B0(a1x->yaw_0x1C_28, v3) < 0x1Cu)
-				v1x->playerEntityIndex_0x94_148 = a1x->id_0x1A_26;
+			{
+				//fixAiPossess: the original takes the ball at once here, so the missile (which skips the caster's own balls) flies past it.
+				//Instead face the ball (less than 5 degrees off) and let the missile lock on and possess it when it lands
+				if (fixAiPossess)
+					a1x->yaw_0x1C_28 = v3;
+				else
+					v1x->playerEntityIndex_0x94_148 = a1x->id_0x1A_26;
+			}
 			goto LABEL_17;
 		}
 		a1x->dword_0xA4_164x->speed_0xc_12 = 0;

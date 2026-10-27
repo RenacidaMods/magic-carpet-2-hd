@@ -36,6 +36,7 @@ extern int maxGameFps;
 extern int renderFps;
 extern bool smoothEntities;
 extern bool smoothCamera;
+extern bool fixAiPossess;
 extern int menuFps;
 extern int displayIndex;
 extern int windowResWidth;

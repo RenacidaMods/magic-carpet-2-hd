@@ -118,6 +118,7 @@ public:
 			int m_RenderFps = 0;
 			bool m_SmoothEntities = false;
 			bool m_SmoothCamera = false;
+			bool m_FixAiPossess = false;
 			bool m_SkipIntro = false;
 		};
 

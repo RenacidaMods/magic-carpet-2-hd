@@ -192,6 +192,8 @@ Config::Settings::Game Config::GetGame(const json& settings)
 			gameValues.m_SmoothEntities = ReadBoolValue(game, "smoothEntities");
 		if (game.contains("smoothCamera"))
 			gameValues.m_SmoothCamera = ReadBoolValue(game, "smoothCamera");
+		if (game.contains("fixAiPossess"))
+			gameValues.m_FixAiPossess = ReadBoolValue(game, "fixAiPossess");
 		gameValues.m_SkipIntro = ReadBoolValue(game, "skipIntro");
 	}
 	return gameValues;
@@ -562,6 +564,7 @@ void Config::SaveGameToDoc(Config::Settings::Game gameSettings)
 	SetInt(game, "renderFps", gameSettings.m_RenderFps);
 	SetBool(game, "smoothEntities", gameSettings.m_SmoothEntities);
 	SetBool(game, "smoothCamera", gameSettings.m_SmoothCamera);
+	SetBool(game, "fixAiPossess", gameSettings.m_FixAiPossess);
 	SetBool(game, "skipIntro", gameSettings.m_SkipIntro);
 }
 
