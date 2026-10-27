@@ -873,6 +873,15 @@ static bool AskQuitGame()
 	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
 	SDL_SetWindowMouseRect(m_window, nullptr);
 	SDL_SetWindowGrab(m_window, SDL_FALSE);
+	// the pointer to the middle of the window, where the box shows (the game keeps it in its rectangle at the top left);
+	// back where it was to keep playing, as the game steers by its position
+	int mouseX = 0;
+	int mouseY = 0;
+	SDL_GetMouseState(&mouseX, &mouseY);
+	int windowWidth = 0;
+	int windowHeight = 0;
+	SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+	SDL_WarpMouseInWindow(m_window, windowWidth / 2, windowHeight / 2);
 	SDL_ShowCursor(1);
 
 	const SDL_MessageBoxButtonData buttons[] = {
@@ -891,6 +900,7 @@ static bool AskQuitGame()
 		if (mouseRect)
 			SDL_SetWindowMouseRect(m_window, &savedMouseRect);
 		SDL_RaiseWindow(m_window);
+		SDL_WarpMouseInWindow(m_window, mouseX, mouseY);
 	}
 	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, minimiseHint ? savedMinimiseHint.c_str() : nullptr);
 	return quit;
