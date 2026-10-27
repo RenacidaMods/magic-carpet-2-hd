@@ -183,6 +183,8 @@ private:
 	void ProjectSprite(int across, int height, int depth);
 	Type_Sprite* UseSprite(int index);
 	SpriteChoice ChooseSprite(type_entity_0x6E8E* entity, const Type_SpriteDef_D951C& def, int depth, int64_t distance, bool rotatedKind21, bool turnTable, Type_Sprite*& sprite);
+	bool NarrowSprite(const type_entity_0x6E8E* entity, const Type_SpriteDef_D951C& def);
+	int8_t m_spriteDefWide[347] = {};//NarrowSprite: the first picture of the sprite definition is wide (1) or not (-1), 0 not known yet
 	void DrawTriangleInProjectionSpace_B6253(const TerrainVertex& vertex1, const TerrainVertex& vertex2, const TerrainVertex& vertex3);
 	void DrawClippedTriangle(const TerrainVertex& vertex1, const TerrainVertex& vertex2, const TerrainVertex& vertex3);
 	void DrawTriangle(const TerrainVertex& vertex1, const TerrainVertex& vertex2, const TerrainVertex& vertex3, int mode, const uint8_t* texture,

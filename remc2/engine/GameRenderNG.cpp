@@ -1243,6 +1243,7 @@ GameRenderNG::SpriteChoice GameRenderNG::ChooseSprite(type_entity_0x6E8E* entity
 		if (distance > m_standardFogStart)
 			m_fadeVisibility = distance - m_standardFogStart < (m_standardFogEnd - m_standardFogStart) / 2 ? Visibility::InFog : Visibility::Transparent;
 	}
+	const bool narrow = spriteAspectFix && NarrowSprite(entity, def);//before the sprite is loaded: it may load another one
 	Type_Sprite* chosen = UseSprite(index);
 	if (!chosen)
 		return SpriteChoice::Skip;
@@ -1253,10 +1254,32 @@ GameRenderNG::SpriteChoice GameRenderNG::ChooseSprite(type_entity_0x6E8E* entity
 	str_F2C20ar.dword0x06_height = sprite->height;
 	str_F2C20ar.dword0x0c_realHeight = str_F2C20ar.dword0x18 * def.worldSize_8 / depth;
 	str_F2C20ar.dword0x09_realWidth = str_F2C20ar.dword0x0c_realHeight * str_F2C20ar.dword0x08_width / str_F2C20ar.dword0x06_height;
-	if (spriteAspectFix)//the sprites are drawn for the tall pixels of 320x200 on a 4:3 screen: on square pixels 5/6 of the width
+	if (narrow)//drawn for the tall pixels of 320x200 on a 4:3 screen: on square pixels 5/6 of the width
 		str_F2C20ar.dword0x09_realWidth = str_F2C20ar.dword0x09_realWidth * 5 / 6;
 	str_F2C20ar.dword0x05 = mirrored ? -str_F2C20ar.dword0x08_width : str_F2C20ar.dword0x08_width;
 	return SpriteChoice::Draw;
+}
+
+// spriteAspectFix: whether the sprite of the entity is drawn 5/6 as wide. The art of the creatures, wizards, trees, mana balls
+// and so on is drawn for the tall pixels of 320x200 on a 4:3 screen (about 6:5 wide). Of the spells (class 9) and their
+// effects (class 10) only some is (possession, speed up, cave in, ...); the rest (fireball, lightning, meteor, ...) is drawn
+// square. Those are narrowed only when the first picture of their sprite definition is wide (over 11:10), the same for every
+// frame of the definition, so an animation keeps one width.
+bool GameRenderNG::NarrowSprite(const type_entity_0x6E8E* entity, const Type_SpriteDef_D951C& def)
+{
+	if (entity->class_0x3F_63 != 9 && entity->class_0x3F_63 != 10)
+		return true;
+	const int defIndex = static_cast<int>(&def - spriteDefsTable_D951C);
+	if (defIndex < 0 || defIndex >= static_cast<int>(std::size(m_spriteDefWide)))
+		return true;
+	if (!m_spriteDefWide[defIndex])
+	{
+		const Type_Sprite* first = UseSprite(def.textureIdx_0);
+		if (!first || !first->height)
+			return true;
+		m_spriteDefWide[defIndex] = first->width * 10 > first->height * 11 ? 1 : -1;
+	}
+	return m_spriteDefWide[defIndex] > 0;
 }
 
 // The sprite set up in str_F2C20ar (data, size, screen position, mode in dword0x01_visibilityIdx). Rotated by the roll
