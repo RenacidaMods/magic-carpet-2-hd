@@ -861,6 +861,41 @@ void ToggleMouseGrabbed() {
 	SDL_SetWindowGrab(m_window, m_settingWindowGrabbed ? SDL_TRUE : SDL_FALSE);
 }
 
+// F12 (not a key of the game): asks in a Windows message box whether to quit the game at once (unsaved progress is lost).
+// While it asks, the mouse is let go (shown, not kept in its rectangle) and the game window does not minimise; Return quits,
+// Escape goes back to the game.
+static bool AskQuitGame()
+{
+	const SDL_Rect* mouseRect = SDL_GetWindowMouseRect(m_window);
+	const SDL_Rect savedMouseRect = mouseRect ? *mouseRect : SDL_Rect{ 0, 0, 0, 0 };
+	const char* minimiseHint = SDL_GetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS);
+	const std::string savedMinimiseHint = minimiseHint ? minimiseHint : "";
+	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+	SDL_SetWindowMouseRect(m_window, nullptr);
+	SDL_SetWindowGrab(m_window, SDL_FALSE);
+	SDL_ShowCursor(1);
+
+	const SDL_MessageBoxButtonData buttons[] = {
+		{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Quit" },
+		{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Keep playing" },
+	};
+	const SDL_MessageBoxData box = { SDL_MESSAGEBOX_INFORMATION, m_window, "Magic Carpet 2",
+		"Quit the game now?\n\nAnything not saved is lost.", SDL_arraysize(buttons), buttons, nullptr };
+	int button = 0;
+	const bool quit = SDL_ShowMessageBox(&box, &button) == 0 && button == 1;
+
+	if (!quit)
+	{
+		SDL_ShowCursor(0);
+		SDL_SetWindowGrab(m_window, m_settingWindowGrabbed ? SDL_TRUE : SDL_FALSE);
+		if (mouseRect)
+			SDL_SetWindowMouseRect(m_window, &savedMouseRect);
+		SDL_RaiseWindow(m_window);
+	}
+	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, minimiseHint ? savedMinimiseHint.c_str() : nullptr);
+	return quit;
+}
+
 bool HandleSpecialKeys(const SDL_Event &event) {
 	bool specialKey = false;
 	if ((event.key.keysym.sym == SDLK_RETURN) && (event.key.keysym.mod & KMOD_ALT)) {
@@ -869,6 +904,16 @@ bool HandleSpecialKeys(const SDL_Event &event) {
 	}
 	else if ((event.key.keysym.sym == SDLK_F10) && (event.key.keysym.mod & KMOD_CTRL)) {
 		ToggleMouseGrabbed();
+		specialKey = true;
+	}
+	else if (event.key.keysym.sym == SDLK_F12 && !event.key.repeat) {
+		if (AskQuitGame())
+		{
+#ifndef __ANDROID__
+			Logger->info("F12: quitting");
+			throw thread_exit_exception();
+#endif
+		}
 		specialKey = true;
 	}
 	return specialKey;
