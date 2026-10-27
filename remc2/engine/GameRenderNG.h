@@ -79,6 +79,9 @@ private:
 	char m_notDay_D4320 = 0;
 	char m_uprightSprite_F2CC6 = 0;
 	int16_t m_cameraYaw_F2CC0 = 0;
+	double m_yawFraction = 0;//SetAngleFractions
+	double m_pitchFraction = 0;
+	double m_rollFraction = 0;
 	int16_t m_cameraY_F2CC2 = 0;
 	int16_t m_cameraX_F2CC4 = 0;
 	uint8_t* m_triangleTexture_DE55C = 0;
@@ -188,7 +191,7 @@ private:
 	void DrawTriangleRow(uint8_t* line, int left, int right, int u, int v, int light, int du, int dv, int dl, const uint8_t* texture, int flatLight);
 	void sub_3FD60(int tileIndex);
 	void sub_88740(type_entity_0x6E8E* entity, int16_t posX, int16_t posY);
-	void SetBillboards_3B560(int16_t roll);
+	void SetBillboards_3B560(int16_t roll, double part);
 	void DrawSorcererNameAndHealthBar_2CB30(type_entity_0x6E8E* entity, int16_t screenX, int screenY, int16_t spriteWidth);
 
 public:
@@ -197,6 +200,7 @@ public:
 	uint8_t GetRenderThreads() const;
 	~GameRenderNG();
 	void DrawWorld_411A0(int posX, int posY, int16_t yaw, int16_t posZ, int16_t pitch, int16_t roll, int16_t fov);
+	void SetAngleFractions(double yaw, double pitch, double roll);
 };
 
 #endif //GAME_RENDER_NG

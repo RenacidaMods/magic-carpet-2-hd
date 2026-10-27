@@ -31931,9 +31931,15 @@ static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetwee
 	player.axis_2BDE_11695.x = static_cast<uint16_t>(lastTurn.position.x + static_cast<int>(stepX * part));
 	player.axis_2BDE_11695.y = static_cast<uint16_t>(lastTurn.position.y + static_cast<int>(stepY * part));
 	player.axis_2BDE_11695.z = static_cast<int16_t>(lastTurn.position.z + static_cast<int>(stepZ * part));
-	player.rotation__2BDE_11701.yaw = static_cast<int16_t>(lastTurn.rotation.yaw + static_cast<int>(InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF) * part));
-	player.rotation__2BDE_11701.pitch = static_cast<int16_t>(lastTurn.rotation.pitch + static_cast<int>((turn.rotation.pitch - lastTurn.rotation.pitch) * part));
-	player.rotation__2BDE_11701.roll = static_cast<int16_t>(lastTurn.rotation.roll + static_cast<int>(InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF) * part));
+	// the angles in whole steps for the game, the part of a step over them for the renderer
+	const double yaw = lastTurn.rotation.yaw + InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF) * part;
+	const double pitch = lastTurn.rotation.pitch + (turn.rotation.pitch - lastTurn.rotation.pitch) * part;
+	const double roll = lastTurn.rotation.roll + InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF) * part;
+	player.rotation__2BDE_11701.yaw = static_cast<int16_t>(std::floor(yaw));
+	player.rotation__2BDE_11701.pitch = static_cast<int16_t>(std::floor(pitch));
+	player.rotation__2BDE_11701.roll = static_cast<int16_t>(std::floor(roll));
+	if (m_ptrGameRender)
+		m_ptrGameRender->SetAngleFractions(yaw - std::floor(yaw), pitch - std::floor(pitch), roll - std::floor(roll));
 	PlaceInBetweenEntities(part);
 	return true;
 }
@@ -31970,6 +31976,8 @@ static void RestoreInBetweenCamera(const InBetweenCamera& turn)
 	auto& player = D41A0_0.array_0x2BDE[turn.levelIndex].struct_0x1d1_2BDE_11695[turn.playerIndex];
 	player.axis_2BDE_11695 = turn.position;
 	player.rotation__2BDE_11701 = turn.rotation;
+	if (m_ptrGameRender)
+		m_ptrGameRender->SetAngleFractions(0, 0, 0);
 	RestoreInBetweenEntities();
 }
 

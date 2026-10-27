@@ -6,6 +6,16 @@
 #include <memory>
 #include <vector>
 
+// sin_DB750 (65536 = 1, 2048 steps a full turn and 512 more for the cosine) a part of a step (0 - 1) after index, between two
+// entries; part 0 = the entry
+static int FineSin(int index, double part)
+{
+	if (part <= 0)
+		return Maths::sin_DB750[index];
+	const int next = index + 1 < 2560 ? index + 1 : index + 1 - 2048;
+	return Maths::sin_DB750[index] + static_cast<int>(std::lround((Maths::sin_DB750[next] - Maths::sin_DB750[index]) * part));
+}
+
 // viewDistanceScale from 1: the terrain grid (40 x 21 tiles in the original) times the scale with the cut-off and the fog
 // further away, over 6 the map (256 x 256 tiles) repeats; fogScale moves the fog (1.0 as the original). With 1 and 1.0 everything is as the original.
 // renderThreads: over 640x480 the sky and the terrain drawn by bands of rows in them and in the game thread (same pixels); the
@@ -88,6 +98,13 @@ void GameRenderNG::BuildTileSteps()
 	quadrant3[7] = columns;
 	quadrant3[8] = 0;
 	quadrant3[9] = 0xFF;
+}
+
+void GameRenderNG::SetAngleFractions(double yaw, double pitch, double roll)
+{
+	m_yawFraction = yaw;
+	m_pitchFraction = pitch;
+	m_rollFraction = roll;
 }
 
 // The camera sways with the slope of the terrain under it; draws the world once, as two eyes (VR, stereo)
@@ -239,8 +256,8 @@ void GameRenderNG::DrawSky_40950(int16_t roll)
 	const int width = viewPort.Width_DE564;
 	const int projectionWidth = ProjectionWidth();
 	const int rollIndex = roll & 0x7FF;
-	sky.cosRoll = Maths::sin_DB750[512 + rollIndex] * sky.size / projectionWidth;
-	sky.sinRoll = Maths::sin_DB750[rollIndex] * sky.size / projectionWidth;
+	sky.cosRoll = FineSin(512 + rollIndex, m_rollFraction) * sky.size / projectionWidth;
+	sky.sinRoll = FineSin(rollIndex, m_rollFraction) * sky.size / projectionWidth;
 
 	sky.columnU.assign(width, 0);
 	sky.columnV.assign(width, 0);
@@ -252,7 +269,8 @@ void GameRenderNG::DrawSky_40950(int16_t roll)
 
 	const int centerX = (-(str_F2C20ar.sin_0x0d * str_F2C20ar.dword0x22) >> 16) + str_F2C20ar.dword0x24;
 	const int centerY = str_F2C20ar.dword0x10 - (str_F2C20ar.cos_0x11 * str_F2C20ar.dword0x22 >> 16);
-	sky.lineU = (m_cameraYaw_F2CC0 << 15) * (sky.size / 256) - (centerX * sky.cosRoll - centerY * sky.sinRoll);
+	const int skyYaw = (m_cameraYaw_F2CC0 << 15) + static_cast<int>(m_yawFraction * 0x8000);
+	sky.lineU = skyYaw * (sky.size / 256) - (centerX * sky.cosRoll - centerY * sky.sinRoll);
 	sky.lineV = -(sky.cosRoll * centerY + sky.sinRoll * centerX);
 	if (m_queueing)
 		m_skyQueued = true;
@@ -326,13 +344,16 @@ void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __i
 	const int yawShifted = (yaw & 0x7FF) + 256;
 	str_F2C20ar.dword0x20 = posZ;
 	str_F2C20ar.dword0x24 = m_eyeShift_D4324 + (viewPort.Width_DE564 >> 1);
-	str_F2C20ar.cos2_0x0f = Maths::sin_DB750[256 + yawShifted];
-	str_F2C20ar.sin2_0x17 = Maths::sin_DB750[yawShifted - 256];
+	str_F2C20ar.cos2_0x0f = FineSin(256 + yawShifted, m_yawFraction);
+	str_F2C20ar.sin2_0x17 = FineSin(yawShifted - 256, m_yawFraction);
 	const int quadrant = (yawShifted >> 9) & 3;
-	const int quadrantYaw = ((yawShifted & 0x1FF) - 256) & 0x7FF;
-	const int quadrantCos = Maths::sin_DB750[512 + quadrantYaw];
-	const int quadrantSin = Maths::sin_DB750[quadrantYaw];
-	SetBillboards_3B560(-roll & 0x7FF);//21d1aa
+	const int quadrantYaw = ((yawShifted & 0x1FF) - 256) & 0x7FF;//the grid of the next quadrant at -45 degrees = this one at 45
+	const int quadrantCos = FineSin(512 + quadrantYaw, m_yawFraction);
+	const int quadrantSin = FineSin(quadrantYaw, m_yawFraction);
+	if (m_rollFraction > 0)//-(roll + part) = -roll - 1 + (1 - part)
+		SetBillboards_3B560((-roll - 1) & 0x7FF, 1 - m_rollFraction);
+	else
+		SetBillboards_3B560(-roll & 0x7FF, 0);//21d1aa
 	const int projectionWidth = ProjectionWidth();
 	str_F2C20ar.dword0x18 = 7 * Maths::sub_7277A_radix_3d(projectionWidth * projectionWidth + viewPort.Height_DE568 * viewPort.Height_DE568) * fov >> 11;
 	const uint8_t* steps = &m_tileSteps_D4328[10 * quadrant];
@@ -385,11 +406,14 @@ void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __i
 
 	str_F2C20ar.dword0x15_tileRenderCutOffDistance = static_cast<int>(m_cutOffDistance);//21d2df
 	str_F2C20ar.dword0x12_FogThickness = static_cast<int>(m_fogEnd - m_fogStart);
-	str_F2C20ar.dword0x22 = pitch * projectionWidth >> 8;
+	if (m_pitchFraction > 0)
+		str_F2C20ar.dword0x22 = static_cast<int>(std::floor((pitch + m_pitchFraction) * projectionWidth / 256));
+	else
+		str_F2C20ar.dword0x22 = pitch * projectionWidth >> 8;
 	const int rollIndex = roll & 0x7FF;
-	str_F2C20ar.cos_0x11 = Maths::sin_DB750[512 + rollIndex];
+	str_F2C20ar.cos_0x11 = FineSin(512 + rollIndex, m_rollFraction);
 	str_F2C20ar.dword0x16_FogEnd = static_cast<int>(m_fogEnd);
-	str_F2C20ar.sin_0x0d = Maths::sin_DB750[rollIndex];
+	str_F2C20ar.sin_0x0d = FineSin(rollIndex, m_rollFraction);
 	str_F2C20ar.dword0x13_FogStart = static_cast<int>(m_fogStart);
 
 	if (!D41A0_0.m_GameSettings.m_Graphics.m_wSky || isCaveLevel_D41B6)
@@ -429,8 +453,8 @@ void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __i
 		return;
 	}
 	ProjectTiles(TerrainProjection::Plain, mapX, mapY, steps, quadrant, posZ);//21eb44
-	str_F2C20ar.sin_0x0d = Maths::sin_DB750[rollIndex];//21edb7
-	str_F2C20ar.cos_0x11 = Maths::sin_DB750[512 + rollIndex];
+	str_F2C20ar.sin_0x0d = FineSin(rollIndex, m_rollFraction);//21edb7
+	str_F2C20ar.cos_0x11 = FineSin(512 + rollIndex, m_rollFraction);
 	RotateTiles(false);
 	ForEachTileFarToNear([&](int tile) {//21ee85
 		DrawTerrainTile(quad, tile, false);
@@ -813,7 +837,7 @@ void GameRenderNG::sub_88740(type_entity_0x6E8E* entity, int16_t posX, int16_t p
 // The lines of the rolled view (8 octants of the roll): for each step along a line its screen offset (dword_1),
 // its row (dword_2) and the offset against the previous step (dword_0). The steps where the line moves to the
 // next row go into the row table (scratch, x_DWORD_E9C38_smalltit + 59360 in the original).
-void GameRenderNG::SetBillboards_3B560(int16_t roll)
+void GameRenderNG::SetBillboards_3B560(int16_t roll, double part)
 {
 	struct Octant
 	{
@@ -836,10 +860,10 @@ void GameRenderNG::SetBillboards_3B560(int16_t roll)
 	const int octantIndex = rollIndex >> 8;
 	const Octant& octant = octants[octantIndex];
 	const int angle = rollIndex - 512 * (octantIndex / 2);
-	const bool diagonal = angle == 256;
+	const bool diagonal = angle == 256 && part <= 0;
 	str_F2C20ar.dword0x1e = octantIndex;
-	str_F2C20ar.dword0x27 = Maths::sin_DB750[angle];
-	str_F2C20ar.dword0x1b = Maths::sin_DB750[angle + 512];
+	str_F2C20ar.dword0x27 = FineSin(angle, part);
+	str_F2C20ar.dword0x1b = FineSin(angle + 512, part);
 	if (diagonal)
 		str_F2C20ar.dword0x1f = 0x10000;
 	else if (octantIndex & 1)
