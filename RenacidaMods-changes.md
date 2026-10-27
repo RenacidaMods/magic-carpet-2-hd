@@ -14,13 +14,17 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 | [Smooth frames between game turns](#smooth-frames-between-game-turns) | `game.renderFps` (off) | [9bf62ed](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/9bf62ed6d2b0137ae7b213d8fbde3c58b4f754e6), [b7a9658](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/b7a965887bac008c049b3db85fd290c0df0d259a) | EventsFunctions.cpp, config files |
 | [Smooth creatures and spells](#smooth-creatures-and-spells) | `game.smoothEntities` (off) | [d184e8f](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/d184e8f13cc4b0325c9d8608461c56c16ee8e7d4) | EventsFunctions.cpp, config files |
 | [Camera one turn sooner](#camera-one-turn-sooner) | part of `renderFps` | [021bc74](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/021bc74425afd35ffc161f6b033b9fe55081203e) | EventsFunctions.cpp |
-| [Sprites at their intended shape](#sprites-at-their-intended-shape) | `graphics.gameDetail.spriteAspectFix` (off) | [8b17795](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8b177953af386332d8afe438c4d5d04e11ab35e7) | GameRenderNG.cpp, config files |
+| [Turning by parts of an angle step](#turning-by-parts-of-an-angle-step) | part of `renderFps` | [5d16e33](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/5d16e3334) | EventsFunctions.cpp, GameRenderInterface.h, GameRenderNG.cpp/.h |
+| [Smooth camera curve](#smooth-camera-curve) | `game.smoothCamera` (off) | [e8e3246](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/e8e3246c5) | EventsFunctions.cpp, PlayerInput.cpp/.h, config files |
+| [Computer wizards' possess fix](#computer-wizards-possess-fix) | `game.fixAiPossess` (off) | [1f35287](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1f35287b5) | EventsFunctions.cpp, config files |
+| [Sprites at their intended shape](#sprites-at-their-intended-shape) | `graphics.gameDetail.spriteAspectFix` (off) | [8b17795](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8b177953af386332d8afe438c4d5d04e11ab35e7), [5727b8c](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/5727b8c6e) | GameRenderNG.cpp/.h, config files |
 | [Choice of SDL render driver](#choice-of-sdl-render-driver) | `graphics.renderDriver` (SDL's choice) | [1204e0f](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1204e0f823c89ea916983f95fcfbf6b5eea5c56e) | port_sdl_vga_mouse.cpp, config files |
 | [Wide screen view](#wide-screen-view) | `graphics.gameDetail.widescreenFov` (off) | [2f9f033](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/2f9f0333aab8563ed58e7ee0d92549806d66260f) | GameRenderNG.cpp/.h, config files |
 | [Bigger marks on the maps](#bigger-marks-on-the-maps) | `graphics.gameDetail.mapMarkSize`, `graphics.gameDetail.minimapMarkSize` (1, the original size) | [bcff28e](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/bcff28e57), [599fa46](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/599fa463a) | GameUI.cpp/.h, EventsFunctions.cpp, config files |
 | [Draw at the screen's resolution](#draw-at-the-screens-resolution) | `graphics.gameDetail.gameResWidth` and `gameResHeight` 0 | [1698882](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1698882cd) | read_config.cpp |
 | [Render threads picked automatically](#render-threads-picked-automatically) | `graphics.threading.numberOfRenderThreads` 0 | [18b5671](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/18b56715e) | read_config.cpp |
 | [Line clipping crash fix](#line-clipping-crash-fix) | always on | [8d44e19](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8d44e198ae8458b7b64534e72ebc104f59c77f18) | GameUI.cpp |
+| [F12 asks to quit](#f12-asks-to-quit) | always on | [9c5a9d3](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/9c5a9d303), [02a0239](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/02a023922) | port_sdl_vga_mouse.cpp |
 | [Close button quits](#close-button-quits) | always on | [c279b5d](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/c279b5d1daea583cbf0599a8f0455e7e26119f2e), [8afc6fd](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8afc6fd76fafa555ed0d69277f2f18f40dc2497b) | port_sdl_vga_mouse.cpp |
 | [Mouse left alone when the window isn't active](#mouse-left-alone-when-the-window-isnt-active) | always on | [5adbc12](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/5adbc12d324927bdbdef24f23daf6fa28c48db02) | port_sdl_vga_mouse.cpp |
 | [Start straight into a save](#start-straight-into-a-save) | `--load_save` command line option | [7c49bbb](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/7c49bbbe013416013ecf3e2f668e24ef8911f28a) | EventsFunctions.cpp, Level.cpp/.h, CommandLineParser.cpp/.h |
@@ -49,13 +53,43 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 
 **How:** `NextTurnCamera` works out the camera the next turn will copy (the same formula as `sub_57B20`, with no side effects), and frames move from this turn's camera towards it. That removes about 42 ms of steering lag and keeps the camera in step with smooth entities. It falls back to the old interpolation while paused, during the barrel roll, when the player is dead, or when another camera is in use.
 
+## Turning by parts of an angle step
+
+**Setting:** part of `renderFps`.
+
+**Why:** the game keeps yaw, pitch and roll in whole steps (2048 to a full turn for yaw and roll), and the renderer only took whole steps. At 640x480 a step was about a pixel; at 3840x2160 one yaw step moves the picture about 6 pixels and one pitch step about 15, so slow turns moved in visible jumps, like a mouse on a very low DPI.
+
+**How:** `PlaceInBetweenCamera` keeps the part of a step and passes it to the renderer (`GameRenderInterface::SetAngleFractions`, ignored by the HD and Original renderers). `GameRenderNG` uses it for the terrain grid, entity positions, sky, horizon shift, tile rotation and billboard lines, reading `sin_DB750` between two entries (`FineSin`). The game logic and the turn's own camera stay in whole steps; with part 0 every value is the original table entry. Measured at 3840x2160 (the same moment drawn at parts of a step): yaw 0.25, 0.5, 0.75 and 1 step moved the picture 2, 3, 5 and 6 pixels, pitch 3, 7, 11 and 15.
+
+## Smooth camera curve
+
+**Setting:** `"smoothCamera": true` in `game` (needs `renderFps`).
+
+**Why:** with `renderFps` the in-between frames joined the turns' cameras with straight lines, so the speed of turning, looking up and down and banking jumped 24 times a second. The game also halves the pitch with whole numbers (`sub_57B20`), so steady looking moved in uneven steps (2, 3, 2, 3, ...).
+
+**How:** yaw, pitch and roll follow a cubic Hermite curve through the turns, starting each turn at the average speed of the steps around it. For the yaw, the speed at the end of the turn uses the step after next, predicted from the live mouse (`x_WORD_E3760_mouse`, updated at every blit) with one more turn of the game's own steering (`PlayerEvents_51BB0`, `sub_5D530`), so turning bends towards the mouse before the next turn reads it. Predicting pitch and roll the same way made them less smooth (the hand moves on before the next turn reads it), so they end at their own step. The pitch keeps the half step that the halving drops. The mouse formula of `ComputeMousePlayerMovement_17060` moved into `MouseRollPitch` for the prediction. Measured at 3840x2160 with the mouse moved in slow waves (RMS of the speed change from frame to frame, as a share of the speed): yaw 9.1% to 7.0-7.5%, pitch 9.4-9.7% to 6.1-6.4%, roll 9.2-9.4% to 7.7-7.9%. It smooths the speed; it doesn't make the view answer the mouse any sooner.
+
 ## Sprites at their intended shape
 
 **Setting:** `"spriteAspectFix": true` in `graphics.gameDetail`.
 
-**Why:** the sprite art was drawn for 320x200 on a 4:3 screen, where each pixel is 1.2 times taller than wide. On square pixels every sprite comes out 1.2 times too wide (mana balls look oval).
+**Why:** most sprite art was drawn for 320x200 on a 4:3 screen, where each pixel is 1.2 times taller than wide. On square pixels those sprites come out 1.2 times too wide (mana balls look oval).
 
-**How:** `ChooseSprite` in GameRenderNG.cpp draws sprites at 5/6 of their width, keeping the height, which matches the world's scale. Measured on a mana ball at 3840x2160: 1.23 times wider than tall before, 1.02 after.
+**How:** `ChooseSprite` in GameRenderNG.cpp draws sprites at 5/6 of their width, keeping the height, which matches the world's scale. Measured on a mana ball at 3840x2160: 1.23 times wider than tall before, 1.02 after. The spells don't all follow that rule: a dump of all 347 sprite definitions (original and HD art, the same shapes) shows possession, speed up, duel, gravity well, cave in and whirlwind drawn wide, but fireball, lightning, meteor, rebound, teleport, shield, beyond sight, tremor, invisible, alliance and the shared sprite of castle, heal, metamorph, fool's mana and magic mine drawn square. So for spells (class 9) and their effects (class 10), `NarrowSprite` narrows only when the first picture of the sprite definition is wider than 11:10, remembered per definition so an animation keeps one width.
+
+## Computer wizards' possess fix
+
+**Setting:** `"fixAiPossess": true` in `game`. Off, the computer wizards play exactly as the original.
+
+**Why:** two quirks in Bullfrog's original AI (both in turican0's first decompile, untouched since). Mana balls: just after casting possess, if the wizard faced the ball within about 5 degrees, the AI made the ball its own on the spot (AI task 6, `sub_135C0`). The missile then skipped the ball, as it was no longer someone else's, and flew past it, and the ball changed colour a moment later, so it looked like a miss followed by a possession from nowhere. Flying home hurt: below half health the AI flies back to its castle (task 11, `sub_133B0`) and casts possess whenever it can, without checking there's anything ahead, so it fired at nothing along the way.
+
+**How:** for mana balls, the wizard faces the ball exactly as it casts and the instant grab is skipped, so the missile locks on and possesses the ball when it lands, with the normal sound; it also stops casting at a ball that's already its own (the original kept casting up to 4 times in 1.5 seconds). Flying home, possess is cast only if the missile's own target search (`sub_67CB0`) would find something from where it would leave (`PossessTargetAhead`). Casts 5 to 30 degrees off still leave along the carpet's heading, as in the original. Measured in quiet test games on level 8: off, every near-exact mana cast had a missile that didn't lock on, and a hurt wizard cast possess about every 0.4 seconds on the way home; on, balls change owner 0.04 to 0.17 seconds after the cast, and 4 hurt wizards flew home with no casts at nothing. Not tested in multiplayer.
+
+## F12 asks to quit
+
+**Why:** quitting quickly was awkward: Alt+F4 is one of the game's cheats, and the mouse is kept inside the window (`SDL_SetWindowMouseRect`, hidden cursor) even when windowed, so reaching the close button meant Alt+Tab and finding the pointer. F11 and F12 aren't keys of the game (Alt+F2 to F10 are cheats, Ctrl with F keys changes settings).
+
+**How:** F12 shows a Windows message box, "Quit the game now? Anything not saved is lost.", with Quit (Return) and Keep playing (Escape). While it asks, the mouse is let go and placed in the middle of the window, near the box, and the game window doesn't minimise (`SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS`). Keep playing puts back the mouse rectangle, grab, hidden cursor and the pointer's position (the game steers by it). Quit leaves through the game's own clean exit, as the close button does.
 
 ## Choice of SDL render driver
 
