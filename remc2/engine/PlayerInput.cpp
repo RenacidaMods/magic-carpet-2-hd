@@ -2105,44 +2105,60 @@ void HandleArrowKeyPresses_1A8A0()//1fb8a0
 }
 
 //----- (00017060) --------------------------------------------------------
-void ComputeMousePlayerMovement_17060(int16_t x, int16_t y)//1f8060
-{
-	int roll; // ebx
-	int pitch; // ecx
+bool mouseSteeredTurn = false;
+bool mouseSteerLive = false;
+int16_t mouseSteerX = 0;
+int16_t mouseSteerY = 0;
 
+// the roll and pitch the mouse at (x, y) steers to (-127 - 127)
+void MouseRollPitch(int16_t x, int16_t y, int& roll, int& pitch)
+{
 	if (CommandLineParams.DoMouseOff2()) {
 		x = 0x140;
 		y = 0xc8;
 	}
 
+	if (x_WORD_180660_VGA_type_resolution == 1)
+	{
+		roll = ((x << 7) - 40960) / 320;
+		pitch = ((y << 7) - 25600) / -200;
+	}
+	else
+	{
+		const int centerX = screenWidth_18062C / 2;//640x480: 320, 240 as the original
+		const int centerY = screenHeight_180624 / 2;
+		roll = ((x << 7) - (centerX << 7)) / centerX;//1f80c5: lea edx, [eax-0A000h]
+		pitch = ((y << 7) - (centerY << 7)) / -centerY;//1f80df: lea edx, [eax-7800h]
+	}
+	if (roll < -127)
+		roll = -127;
+	if (roll > 127)
+		roll = 127;
+	if (pitch < -127)
+		pitch = -127;
+	if (pitch > 127)
+		pitch = 127;
+
+	if (!invertYAxis)
+		pitch = pitch * -1;
+
+	if (invertXAxis)
+		roll = roll * -1;
+}
+
+void ComputeMousePlayerMovement_17060(int16_t x, int16_t y)//1f8060
+{
+	int roll; // ebx
+	int pitch; // ecx
+
 	if (!x_D41A0_BYTEARRAY_4_struct.speedIndex)
 	{
-		if (x_WORD_180660_VGA_type_resolution == 1)
-		{
-			roll = ((x << 7) - 40960) / 320;
-			pitch = ((y << 7) - 25600) / -200;
-		}
-		else
-		{
-			const int centerX = screenWidth_18062C / 2;//640x480: 320, 240 as the original
-			const int centerY = screenHeight_180624 / 2;
-			roll = ((x << 7) - (centerX << 7)) / centerX;//1f80c5: lea edx, [eax-0A000h]
-			pitch = ((y << 7) - (centerY << 7)) / -centerY;//1f80df: lea edx, [eax-7800h]
-		}
-		if (roll < -127)
-			roll = -127;
-		if (roll > 127)
-			roll = 127;
-		if (pitch < -127)
-			pitch = -127;
-		if (pitch > 127)
-			pitch = 127;
-
-		if (!invertYAxis)
-			pitch = pitch * -1;
-
-		if (invertXAxis)
-			roll = roll * -1;
+		//for smoothCamera: the mouse of this turn, and whether it is the mouse of the window (not a replay or the joystick)
+		mouseSteeredTurn = true;
+		mouseSteerLive = x == x_WORD_E3760_mouse.x && y == x_WORD_E3760_mouse.y;
+		mouseSteerX = x;
+		mouseSteerY = y;
+		MouseRollPitch(x, y, roll, pitch);
 
 		D41A0_0.playerInputs_0x6E3E[D41A0_0.LevelIndex_0xc].roll = roll;
 		D41A0_0.playerInputs_0x6E3E[D41A0_0.LevelIndex_0xc].pitch = pitch;

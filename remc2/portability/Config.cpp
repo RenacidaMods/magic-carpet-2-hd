@@ -190,6 +190,8 @@ Config::Settings::Game Config::GetGame(const json& settings)
 			gameValues.m_RenderFps = ReadIntValue(game, "renderFps");
 		if (game.contains("smoothEntities"))
 			gameValues.m_SmoothEntities = ReadBoolValue(game, "smoothEntities");
+		if (game.contains("smoothCamera"))
+			gameValues.m_SmoothCamera = ReadBoolValue(game, "smoothCamera");
 		gameValues.m_SkipIntro = ReadBoolValue(game, "skipIntro");
 	}
 	return gameValues;
@@ -559,6 +561,7 @@ void Config::SaveGameToDoc(Config::Settings::Game gameSettings)
 	SetInt(game, "maxGameFps", gameSettings.m_MaxGameFps);
 	SetInt(game, "renderFps", gameSettings.m_RenderFps);
 	SetBool(game, "smoothEntities", gameSettings.m_SmoothEntities);
+	SetBool(game, "smoothCamera", gameSettings.m_SmoothCamera);
 	SetBool(game, "skipIntro", gameSettings.m_SkipIntro);
 }
 

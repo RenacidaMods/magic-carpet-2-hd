@@ -35,6 +35,7 @@ extern int texturepixels;
 extern int maxGameFps;
 extern int renderFps;
 extern bool smoothEntities;
+extern bool smoothCamera;
 extern int menuFps;
 extern int displayIndex;
 extern int windowResWidth;

@@ -31800,11 +31800,20 @@ struct InBetweenCamera
 	int playerIndex;
 	axis_3d position;
 	axis_4d rotation;
+	double pitchHalf = 0;//smoothCamera: the half step sub_57B20 drops from the pitch (pitch / 2), -0.5, 0 or 0.5
 };
 
-static InBetweenCamera GetInBetweenCamera()
+static int inBetweenTurnCount = 0;//DrawAndEventsInGame_47560 calls
+// smoothCamera: the half steps of the pitch of the cameras of the last turn and of this one (NextTurnCamera of the turns before)
+static double inBetweenLastTurnPitchHalf = 0;
+static double inBetweenTurnPitchHalf = 0;
+static double inBetweenNextPitchHalf = 0;
+static int inBetweenNextPitchHalfTurn = -1;
+
+static InBetweenCamera GetInBetweenCamera(double pitchHalf = 0)
 {
 	InBetweenCamera camera;
+	camera.pitchHalf = pitchHalf;
 	camera.levelIndex = D41A0_0.LevelIndex_0xc;
 	camera.playerIndex = D41A0_0.array_0x2BDE[camera.levelIndex].ActPlayerIndex_0x00e_2BDE_11244 + 1;
 	const auto& player = D41A0_0.array_0x2BDE[camera.levelIndex].struct_0x1d1_2BDE_11695[camera.playerIndex];
@@ -31916,9 +31925,34 @@ static void RestoreInBetweenEntities()
 		}
 }
 
-// The camera (and with smoothEntities the entities) part of the way (0 - 1) from the last turn to this turn; false: no way
-// between them (another level or player, or the jump of a new level or life), all stays at this turn.
-static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetweenCamera& turn, double part)
+// the yaw, pitch and roll from one camera to another the shortest way round
+static std::array<double, 3> InBetweenAngleSteps(const InBetweenCamera& from, const InBetweenCamera& to)
+{
+	return { static_cast<double>(InBetweenStep(from.rotation.yaw, to.rotation.yaw, 0x7FF)),
+		to.rotation.pitch + to.pitchHalf - from.rotation.pitch - from.pitchHalf,
+		static_cast<double>(InBetweenStep(from.rotation.roll, to.rotation.roll, 0x7FF)) };
+}
+
+// smoothCamera: the speeds (steps a turn) of the yaw, pitch and roll where the way of the frames starts and ends. The way is
+// then a curve through the turns (cubic Hermite) instead of straight lines, so the speed of the view changes smoothly.
+struct InBetweenCurve
+{
+	std::array<double, 3> start;
+	std::array<double, 3> end;
+};
+
+// part (0 - 1) of the way of step on the curve from speed start to speed end
+static double InBetweenCurveWay(double step, double start, double end, double part)
+{
+	const double part2 = part * part;
+	const double part3 = part2 * part;
+	return start * (part3 - 2 * part2 + part) + step * (3 * part2 - 2 * part3) + end * (part3 - part2);
+}
+
+// The camera (and with smoothEntities the entities) part of the way (0 - 1) from the last turn to this turn, the angles on
+// curve when there is one; false: no way between them (another level or player, or the jump of a new level or life), all
+// stays at this turn.
+static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetweenCamera& turn, double part, const InBetweenCurve* curve = nullptr)
 {
 	if (turn.levelIndex != lastTurn.levelIndex || turn.playerIndex != lastTurn.playerIndex)
 		return false;
@@ -31932,9 +31966,13 @@ static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetwee
 	player.axis_2BDE_11695.y = static_cast<uint16_t>(lastTurn.position.y + static_cast<int>(stepY * part));
 	player.axis_2BDE_11695.z = static_cast<int16_t>(lastTurn.position.z + static_cast<int>(stepZ * part));
 	// the angles in whole steps for the game, the part of a step over them for the renderer
-	const double yaw = lastTurn.rotation.yaw + InBetweenStep(lastTurn.rotation.yaw, turn.rotation.yaw, 0x7FF) * part;
-	const double pitch = lastTurn.rotation.pitch + (turn.rotation.pitch - lastTurn.rotation.pitch) * part;
-	const double roll = lastTurn.rotation.roll + InBetweenStep(lastTurn.rotation.roll, turn.rotation.roll, 0x7FF) * part;
+	const auto steps = InBetweenAngleSteps(lastTurn, turn);
+	std::array<double, 3> way;
+	for (int i = 0; i < 3; i++)
+		way[i] = curve ? InBetweenCurveWay(steps[i], curve->start[i], curve->end[i], part) : steps[i] * part;
+	const double yaw = lastTurn.rotation.yaw + way[0];
+	const double pitch = lastTurn.rotation.pitch + lastTurn.pitchHalf + way[1];
+	const double roll = lastTurn.rotation.roll + way[2];
 	player.rotation__2BDE_11701.yaw = static_cast<int16_t>(std::floor(yaw));
 	player.rotation__2BDE_11701.pitch = static_cast<int16_t>(std::floor(pitch));
 	player.rotation__2BDE_11701.roll = static_cast<int16_t>(std::floor(roll));
@@ -31947,26 +31985,101 @@ static bool PlaceInBetweenCamera(const InBetweenCamera& lastTurn, const InBetwee
 // The camera the next turn copies from the player's entity (sub_57B20, with this turn's look offsets): this turn's camera is
 // a turn behind the entity, so the frames move from it to this one instead of from the last turn's camera. false: not now
 // (paused, the barrel roll of sub_55C60 sets the roll, dead, another camera), the frames move from the last turn's camera.
-static bool NextTurnCamera(const InBetweenCamera& turn, InBetweenCamera& next)
+static const type_entity_0x6E8E* InBetweenPlayerEntity(const InBetweenCamera& turn)
 {
 	if (x_D41A0_BYTEARRAY_4_struct.OptionsSettingFlag_24 & GAME_PAUSED)
-		return false;
+		return nullptr;
 	const type_str_0x2BDE& player = D41A0_0.array_0x2BDE[turn.levelIndex];
 	if (player.byte_0x846_2BDE || player.word_0x010_2BDE_11246 != turn.playerIndex)
-		return false;
+		return nullptr;
 	const type_entity_0x6E8E* entity = Entities_EA3E4[player.playerIndex_0x00a_2BE4_11240];
 	if (!entity || !entity->dword_0xA4_164x || entity->life_0x8 < 0)
-		return false;
+		return nullptr;
+	return entity;
+}
+
+// the angles of the camera sub_57B20 makes from the entity's yaw, roll and pitch
+static void SetInBetweenCameraAngles(InBetweenCamera& camera, const type_entity_0x6E8E* entity, int yaw, int roll, int pitch)
+{
 	const auto* state = entity->dword_0xA4_164x;
 	const int boost = state->moveBoost_0x1E_30;
-	next = turn;
-	next.position = entity->position_0x4C_76;
-	next.rotation.yaw = static_cast<int16_t>(entity->yaw_0x1C_28 + state->nextEntity_0x18_24);
-	next.rotation.roll = state->roll_0x155_341;
-	next.rotation.pitch = static_cast<int16_t>(state->pitch_0x157_343 / 2
+	camera.rotation.yaw = static_cast<int16_t>(yaw + state->nextEntity_0x18_24);
+	camera.rotation.roll = static_cast<int16_t>(roll);
+	camera.rotation.pitch = static_cast<int16_t>(pitch / 2
 		+ x_D41A0_BYTEARRAY_4_struct.colorIndex_121[1] * ((boost - (my_sign32(boost) << 4) + my_sign32(boost)) >> 4)
 		- ((boost - (my_sign32(boost) << 3) + my_sign32(boost)) >> 3)
 		+ state->entityIndex2_0x1A_26);
+	camera.pitchHalf = smoothCamera ? pitch / 2.0 - pitch / 2 : 0;
+}
+
+static bool NextTurnCamera(const InBetweenCamera& turn, InBetweenCamera& next)
+{
+	const type_entity_0x6E8E* entity = InBetweenPlayerEntity(turn);
+	if (!entity)
+		return false;
+	next = turn;
+	next.position = entity->position_0x4C_76;
+	SetInBetweenCameraAngles(next, entity, entity->yaw_0x1C_28, entity->dword_0xA4_164x->roll_0x155_341, entity->dword_0xA4_164x->pitch_0x157_343);
+	inBetweenNextPitchHalf = next.pitchHalf;
+	inBetweenNextPitchHalfTurn = inBetweenTurnCount;
+	return true;
+}
+
+// smoothCamera: the camera of the turn after the next one as the game would make it with the mouse now: one more turn of the
+// steering of PlayerEvents_51BB0 (a quarter of the way to twice the mouse's roll and pitch) and sub_5D530 (the roll turns
+// the yaw) for the player's entity. false: not steered by the mouse this turn.
+static bool PredictTurnAfterNext(const InBetweenCamera& next, InBetweenCamera& afterNext)
+{
+	if (!mouseSteeredTurn || x_D41A0_BYTEARRAY_4_struct.speedIndex)
+		return false;
+	const type_entity_0x6E8E* entity = InBetweenPlayerEntity(next);
+	if (!entity)
+		return false;
+	const auto* state = entity->dword_0xA4_164x;
+	int inputRoll;
+	int inputPitch;
+	if (mouseSteerLive)
+		MouseRollPitch(x_WORD_E3760_mouse.x, x_WORD_E3760_mouse.y, inputRoll, inputPitch);
+	else
+		MouseRollPitch(mouseSteerX, mouseSteerY, inputRoll, inputPitch);
+	const auto quarter = [](int value) { return (value - (my_sign32(value) << 2) + my_sign32(value)) >> 2; };
+	int rollDelta = static_cast<int16_t>(quarter(2 * inputRoll - state->roll_0x155_341));
+	int pitchDelta = static_cast<int16_t>(quarter(2 * inputPitch - state->pitch_0x157_343));
+	if (state->moveSpeed_0x14C_332)
+	{
+		const auto slowed = [state](int delta) {
+			const int value = delta * (4 - state->moveSpeed_0x14C_332);
+			return (value - (my_sign32(value) * 3)) >> 2;
+		};
+		rollDelta = slowed(rollDelta);
+		pitchDelta = slowed(pitchDelta);
+	}
+	const int roll = static_cast<int16_t>(state->roll_0x155_341 + rollDelta);
+	const int pitch = static_cast<int16_t>(state->pitch_0x157_343 + pitchDelta);
+	const int yaw = (entity->yaw_0x1C_28 + ((roll - (my_sign32(roll) * 7)) >> 3)) & 0x7FF;
+	afterNext = next;
+	SetInBetweenCameraAngles(afterNext, entity, yaw, roll, pitch);
+	return true;
+}
+
+// smoothCamera: the curve of the frames from turn to next. Its speed at turn is the average of the steps around it; at next,
+// for the yaw, the average of this step and the step after next predicted from the mouse now, so the turning bends towards the
+// mouse already in this turn, and for the pitch and the roll this step's speed (a prediction made them less smooth: the mouse
+// moves on before the next turn reads it). false: no curve now.
+static bool InBetweenCurveNow(const InBetweenCamera& lastTurn, const InBetweenCamera& turn, const InBetweenCamera& next, InBetweenCurve& curve)
+{
+	if (!smoothCamera)
+		return false;
+	const auto before = InBetweenAngleSteps(lastTurn, turn);
+	const auto now = InBetweenAngleSteps(turn, next);
+	for (int i = 0; i < 3; i++)
+	{
+		curve.start[i] = (before[i] + now[i]) / 2;
+		curve.end[i] = now[i];
+	}
+	InBetweenCamera afterNext;
+	if (PredictTurnAfterNext(next, afterNext))
+		curve.end[0] = (now[0] + InBetweenAngleSteps(next, afterNext)[0]) / 2;
 	return true;
 }
 
@@ -32001,7 +32114,7 @@ static int DrawInBetweenFrames(const InBetweenCamera& lastTurn, std::chrono::sys
 		return 0;
 	const int frames = renderFps / maxGameFps;
 	int drawn = 0;
-	const InBetweenCamera turn = GetInBetweenCamera();
+	const InBetweenCamera turn = GetInBetweenCamera(inBetweenTurnPitchHalf);
 	InBetweenCamera next;
 	const bool ahead = NextTurnCamera(turn, next);
 	const std::chrono::duration<double, std::milli> turnMs(1000.0 / maxGameFps);
@@ -32010,7 +32123,9 @@ static int DrawInBetweenFrames(const InBetweenCamera& lastTurn, std::chrono::sys
 		const std::chrono::duration<double, std::milli> frameMs(inBetweenDrawMs + inBetweenBlitMs);
 		if (std::chrono::system_clock::now() + 2 * frameMs > turnStart + turnMs)
 			break;
-		if (!PlaceInBetweenCamera(ahead ? turn : lastTurn, ahead ? next : turn, InBetweenPart(turnStart)))
+		InBetweenCurve curve;
+		const bool curved = ahead && InBetweenCurveNow(lastTurn, turn, next, curve);
+		if (!PlaceInBetweenCamera(ahead ? turn : lastTurn, ahead ? next : turn, InBetweenPart(turnStart), curved ? &curve : nullptr))
 			break;
 		const auto drawStart = std::chrono::system_clock::now();
 		DrawGameFrame_2BE30();
@@ -32053,9 +32168,13 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 {
 	const auto turnStart = InBetweenTurnStart();
 	SetFrameStart(turnStart);
+	inBetweenTurnCount++;
+	mouseSteeredTurn = false;
+	inBetweenLastTurnPitchHalf = inBetweenTurnPitchHalf;
+	inBetweenTurnPitchHalf = inBetweenNextPitchHalfTurn == inBetweenTurnCount - 1 ? inBetweenNextPitchHalf : 0;
 	if (pendingLoadSave > 0 && x_D41A0_BYTEARRAY_4_struct.paletteMod_51 >= 3 && --pendingLoadSaveTurns <= 0)
 		LoadPendingSave();
-	const InBetweenCamera lastTurnCamera = GetInBetweenCamera();
+	const InBetweenCamera lastTurnCamera = GetInBetweenCamera(inBetweenLastTurnPitchHalf);
 	if (InBetweenFramesOn())
 		NoteInBetweenEntities();
 	if ((CommandLineParams.ModeRegressionsTestType() != -1) && (count_begin == 1))
@@ -32157,11 +32276,13 @@ void DrawAndEventsInGame_47560(int16_t turn)//228560
 	const int inBetweenFrames = DrawInBetweenFrames(lastTurnCamera, turnStart);
 	if (InBetweenFramesOn())
 		LogInBetweenFrames(inBetweenFrames);
-	const InBetweenCamera turnCamera = GetInBetweenCamera();
+	const InBetweenCamera turnCamera = GetInBetweenCamera(inBetweenTurnPitchHalf);
 	InBetweenCamera nextTurnCamera;
 	const bool ahead = InBetweenFramesOn() && NextTurnCamera(turnCamera, nextTurnCamera);
+	InBetweenCurve curve;
+	const bool curved = ahead && InBetweenCurveNow(lastTurnCamera, turnCamera, nextTurnCamera, curve);
 	const bool inBetweenCamera = InBetweenFramesOn()
-		&& PlaceInBetweenCamera(ahead ? turnCamera : lastTurnCamera, ahead ? nextTurnCamera : turnCamera, InBetweenPart(turnStart));
+		&& PlaceInBetweenCamera(ahead ? turnCamera : lastTurnCamera, ahead ? nextTurnCamera : turnCamera, InBetweenPart(turnStart), curved ? &curve : nullptr);
 	const auto drawStart = std::chrono::system_clock::now();
 	DrawGameFrame_2BE30();
 	inBetweenDrawMs = MsSince(drawStart);

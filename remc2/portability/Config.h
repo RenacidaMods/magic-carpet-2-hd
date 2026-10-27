@@ -117,6 +117,7 @@ public:
 			int m_MaxGameFps = 0;
 			int m_RenderFps = 0;
 			bool m_SmoothEntities = false;
+			bool m_SmoothCamera = false;
 			bool m_SkipIntro = false;
 		};
 

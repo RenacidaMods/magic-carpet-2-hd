@@ -65,6 +65,7 @@ int texturepixels = 32;
 int maxGameFps = 30;
 int renderFps = 0;
 bool smoothEntities = false;
+bool smoothCamera = false;
 int menuFps = 30;
 int displayIndex = 0;
 int windowResWidth = 640;
@@ -182,6 +183,7 @@ bool SetConfig() {
 	maxGameFps = settingsValue.m_Game.m_MaxGameFps;
 	renderFps = settingsValue.m_Game.m_RenderFps;
 	smoothEntities = settingsValue.m_Game.m_SmoothEntities;
+	smoothCamera = settingsValue.m_Game.m_SmoothCamera;
 	if (settingsValue.m_Game.m_SkipIntro)
 		config_skip_screen = 1;
 	else

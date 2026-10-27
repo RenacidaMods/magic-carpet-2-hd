@@ -29,6 +29,11 @@ void sub_1A7A0_fly_asistant();
 void HandleMouseButtons_18F80(type_entity_0x6E8E* a1);
 void HandleArrowKeyPresses_1A8A0();
 void ComputeMousePlayerMovement_17060(int16_t x, int16_t y);
+void MouseRollPitch(int16_t x, int16_t y, int& roll, int& pitch);
+extern bool mouseSteeredTurn;//ComputeMousePlayerMovement_17060 steered this turn (set false before the inputs are read)
+extern bool mouseSteerLive;//by the mouse of the window (x_WORD_E3760_mouse)
+extern int16_t mouseSteerX;
+extern int16_t mouseSteerY;
 int SelectSpellCategory_6D420(int16_t posX, int16_t posY);
 char sub_6D4C0(type_str_611* a1);
 void ReadOptionMenuEvents_19AB0();
