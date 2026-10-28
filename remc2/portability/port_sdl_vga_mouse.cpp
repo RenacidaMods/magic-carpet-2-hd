@@ -8,6 +8,10 @@
 #include "../engine/sub_main_mouse.h"
 #include "../engine/read_config.h"
 #include "../engine/CommandLineParser.h"
+#include "../engine/RenderThread.h"
+
+#include <memory>
+#include <vector>
 
 #ifdef USE_DOSBOX
 extern DOS_Device* DOS_CON;
@@ -1097,6 +1101,57 @@ void ScaleDownMouseCoordsToVga(int16_t& x, int16_t& y)
 	}
 }
 
+// The frame into the texture: the game's 256 colours turned into the texture's RGB888 by bands of rows, on the render threads
+// and this thread together, straight into the locked texture (no SDL_BlitSurface into m_gameRGBASurface and no
+// SDL_UpdateTexture copy; at 3840x2160 those took about 3 and 2.5 ms on one thread). With frame the bands also copy it into
+// m_gamePalletisedSurface, as VGA_Blit did before. false: not done (the caller uses the SDL way).
+static std::vector<std::unique_ptr<RenderThread>> m_blitThreads;
+
+static bool ConvertFrameToTexture(const uint8_t* frame)
+{
+	const SDL_Palette* palette = m_gamePalletisedSurface->format->palette;
+	if (!palette || palette->ncolors < 256 || m_gameRGBASurface->format->format != SDL_PIXELFORMAT_RGB888)
+		return false;
+	uint32_t colours[256];
+	for (int i = 0; i < 256; i++)
+		colours[i] = static_cast<uint32_t>(palette->colors[i].r) << 16 | static_cast<uint32_t>(palette->colors[i].g) << 8 | palette->colors[i].b;
+	void* pixels = nullptr;
+	int pitch = 0;
+	if (SDL_LockTexture(m_texture, nullptr, &pixels, &pitch) != 0)
+		return false;
+
+	const int threads = multiThreadedRender ? numberOfRenderThreads : 0;
+	if (static_cast<int>(m_blitThreads.size()) != threads)
+	{
+		m_blitThreads.clear();
+		for (int thread = 0; thread < threads; thread++)
+			m_blitThreads.push_back(std::make_unique<RenderThread>());
+	}
+	const int width = m_gamePalletisedSurface->w;
+	const int height = m_gamePalletisedSurface->h;
+	const int bands = static_cast<int>(m_blitThreads.size()) + 1;
+	const auto convert = [&](int band)
+	{
+		for (int y = height * band / bands; y < height * (band + 1) / bands; y++)
+		{
+			uint8_t* row = static_cast<uint8_t*>(m_gamePalletisedSurface->pixels) + y * m_gamePalletisedSurface->pitch;
+			if (frame)
+				memcpy(row, frame + y * width, width);
+			uint32_t* out = reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(pixels) + y * pitch);
+			for (int x = 0; x < width; x++)
+				out[x] = colours[row[x]];
+		}
+	};
+	for (size_t thread = 0; thread < m_blitThreads.size(); thread++)
+		m_blitThreads[thread]->Run([&convert, thread] { convert(static_cast<int>(thread) + 1); });
+	convert(0);
+	for (const auto& thread : m_blitThreads)
+		while (thread->GetIsTaskRunning())
+			std::this_thread::yield();
+	SDL_UnlockTexture(m_texture);
+	return true;
+}
+
 void VGA_Blit(Uint8* srcBuffer) {
 	if (unitTests)return;
 
@@ -1120,17 +1175,18 @@ void VGA_Blit(Uint8* srcBuffer) {
 			return;
 		}
 	}
-	if (srcBuffer)
+	const bool converted = ConvertFrameToTexture(srcBuffer);
+	if (!converted && srcBuffer)
 		memcpy(m_gamePalletisedSurface->pixels, srcBuffer, m_gamePalletisedSurface->h * m_gamePalletisedSurface->w);
 
 	if (SDL_MUSTLOCK(m_gamePalletisedSurface)) {
 		SDL_UnlockSurface(m_gamePalletisedSurface);
 	}
-	SubBlit(m_iOrigw, m_iOrigh);
+	SubBlit(m_iOrigw, m_iOrigh, converted);
 	SOUND_UPDATE();
 }
 
-void SubBlit(uint16_t originalResWidth, uint16_t originalResHeight) {
+void SubBlit(uint16_t originalResWidth, uint16_t originalResHeight, bool textureReady) {
 	while (subBlitLock);//fix problem with quick blitting
 	subBlitLock = true;
 
@@ -1169,11 +1225,14 @@ void SubBlit(uint16_t originalResWidth, uint16_t originalResHeight) {
 		dscrect.y = 0;
 	}
 
-	SDL_BlitSurface(m_gamePalletisedSurface, NULL, m_gameRGBASurface, NULL);
+	if (!textureReady)
+	{
+		SDL_BlitSurface(m_gamePalletisedSurface, NULL, m_gameRGBASurface, NULL);
 
-	//WriteSurfaceToFile(m_gamePalletisedSurface);
+		//WriteSurfaceToFile(m_gamePalletisedSurface);
 
-	SDL_UpdateTexture(m_texture, NULL, m_gameRGBASurface->pixels, m_gameRGBASurface->pitch);
+		SDL_UpdateTexture(m_texture, NULL, m_gameRGBASurface->pixels, m_gameRGBASurface->pitch);
+	}
 	SDL_RenderCopy(m_renderer, m_texture, &rectSrc, &dscrect);
 
 	SDL_RenderPresent(m_renderer);

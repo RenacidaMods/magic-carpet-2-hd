@@ -32,7 +32,7 @@ void VGA_close();
 void FreeRenderSurfaces();
 void VGA_Resize(int width, int height);
 void VGA_Blit(Uint8* srcBuffer);
-void SubBlit(uint16_t originalResWidth, uint16_t originalResHeight);
+void SubBlit(uint16_t originalResWidth, uint16_t originalResHeight, bool textureReady = false);//textureReady: the frame is in m_texture already
 void VGA_Debug_Blit(int width, int height, Uint8* srcBuffer);
 void VGA_Set_Palette(Uint8* Palettebuffer);
 void VGA_Set_Palette2(Uint8* Palettebuffer);
