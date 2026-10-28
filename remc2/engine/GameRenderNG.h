@@ -192,6 +192,7 @@ private:
 	void SetTileShading(const type_E9C38_smalltit& tile, const TerrainVertex quad[4]);
 	void SetTileTexture(TerrainVertex quad[4], const type_E9C38_smalltit& tile, int textureIndex);
 	void DrawTileTriangles(TerrainVertex quad[4], const type_E9C38_smalltit& tile, bool upsideDown);
+	bool SecondPointsOffScreen(int tile) const;
 	void DrawCaveTile(TerrainVertex quad[4], int index);
 	void DrawReflectedTile(TerrainVertex quad[4], int index);
 	void DrawTerrainTile(TerrainVertex quad[4], int index, bool water);

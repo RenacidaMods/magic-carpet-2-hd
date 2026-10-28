@@ -685,6 +685,15 @@ void GameRenderNG::DrawTileTriangles(TerrainVertex quad[4], const type_E9C38_sma
 	}
 }
 
+// All four corners of the tile's second points (ceiling or reflection) off the same side of the view port (flags 0x100 to
+// 0x800 of RotateTiles): its triangles cannot draw a pixel. The terrain does the same with flags 8 to 0x40 (allFlags & 0x78);
+// the original never checked the second points, so most of their triangles were queued only to be cut away.
+bool GameRenderNG::SecondPointsOffScreen(int tile) const
+{
+	return (m_tiles[tile - m_tileColumns].triangleFeatures_38 & m_tiles[tile - m_tileColumns + 1].triangleFeatures_38
+		& m_tiles[tile + 1].triangleFeatures_38 & m_tiles[tile].triangleFeatures_38 & 0xF00) != 0;
+}
+
 // Cave: the ceiling (texture 1, pnt3/pnt4) and the floor with its sprites; nothing when all corners have flag 0x80.
 void GameRenderNG::DrawCaveTile(TerrainVertex quad[4], int index)
 {
@@ -695,7 +704,7 @@ void GameRenderNG::DrawCaveTile(TerrainVertex quad[4], int index)
 	if (!(allFlags & 0x80))
 	{
 		SetTileShading(tile, quad);
-		if (!(anyFlags & 2))
+		if (!(anyFlags & 2) && !SecondPointsOffScreen(index))
 		{
 			SetTileTexture(quad, tile, 1);
 			m_triangleMode_E126D = 5;
@@ -725,7 +734,7 @@ void GameRenderNG::DrawReflectedTile(TerrainVertex quad[4], int index)
 	if (tile.textIndex_41)
 	{
 		SetTileShading(tile, quad);
-		if (!(anyFlags & 2))
+		if (!(anyFlags & 2) && !SecondPointsOffScreen(index))
 		{
 			SetTileTexture(quad, tile, tile.textIndex_41);
 			m_triangleMode_E126D = 5;
