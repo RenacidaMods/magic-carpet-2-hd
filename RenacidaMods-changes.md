@@ -18,6 +18,7 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 | [Smooth camera curve](#smooth-camera-curve) | `game.smoothCamera` (off) | [e8e3246](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/e8e3246c5) | EventsFunctions.cpp, PlayerInput.cpp/.h, config files |
 | [Computer wizards' possess fix](#computer-wizards-possess-fix) | `game.fixAiPossess` (off) | [1f35287](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1f35287b5) | EventsFunctions.cpp, config files |
 | [Sprites at their intended shape](#sprites-at-their-intended-shape) | `graphics.gameDetail.spriteAspectFix` (off) | [8b17795](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/8b177953af386332d8afe438c4d5d04e11ab35e7), [5727b8c](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/5727b8c6e) | GameRenderNG.cpp/.h, config files |
+| [Faster frame display](#faster-frame-display) | always on | [f14e19a](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/f14e19a4b) | port_sdl_vga_mouse.cpp/.h |
 | [Choice of SDL render driver](#choice-of-sdl-render-driver) | `graphics.renderDriver` (SDL's choice) | [1204e0f](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/1204e0f823c89ea916983f95fcfbf6b5eea5c56e) | port_sdl_vga_mouse.cpp, config files |
 | [Wide screen view](#wide-screen-view) | `graphics.gameDetail.widescreenFov` (off) | [2f9f033](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/2f9f0333aab8563ed58e7ee0d92549806d66260f) | GameRenderNG.cpp/.h, config files |
 | [Bigger marks on the maps](#bigger-marks-on-the-maps) | `graphics.gameDetail.mapMarkSize`, `graphics.gameDetail.minimapMarkSize` (1, the original size) | [bcff28e](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/bcff28e57), [599fa46](https://github.com/RenacidaMods/magic-carpet-2-hd/commit/599fa463a) | GameUI.cpp/.h, EventsFunctions.cpp, config files |
@@ -90,6 +91,12 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 **Why:** quitting quickly was awkward: Alt+F4 is one of the game's cheats, and the mouse is kept inside the window (`SDL_SetWindowMouseRect`, hidden cursor) even when windowed, so reaching the close button meant Alt+Tab and finding the pointer. F11 and F12 aren't keys of the game (Alt+F2 to F10 are cheats, Ctrl with F keys changes settings).
 
 **How:** F12 shows a Windows message box, "Quit the game now? Anything not saved is lost.", with Quit (Return) and Keep playing (Escape). While it asks, the mouse is let go and placed in the middle of the window, near the box, and the game window doesn't minimise (`SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS`). Keep playing puts back the mouse rectangle, grab, hidden cursor and the pointer's position (the game steers by it). Quit leaves through the game's own clean exit, as the close button does.
+
+## Faster frame display
+
+**Why:** profiling at 3840x2160 showed that showing a finished frame cost more than drawing it. On the game thread, `VGA_Blit` copied the 8 MB frame (0.5 ms), `SDL_BlitSurface` turned its 256 colours into RGB888 (about 3 ms) and `SDL_UpdateTexture` uploaded it (about 2.5 ms): about 6 ms a frame, against about 3 ms for the ground on all cores and up to 2.4 ms for the sprites.
+
+**How:** `ConvertFrameToTexture` locks the streaming texture and fills it by bands of rows on the render threads and the game thread together, through a 256-entry table made from the surface's palette, copying the frame into `m_gamePalletisedSurface` in the same pass (other code still draws on that surface). `SubBlit` then skips `SDL_BlitSurface` and `SDL_UpdateTexture`; if the texture can't be locked it falls back to them. Every row matched `SDL_BlitSurface` exactly at 640x480, 320x200 and 3840x2160. Showing a frame now takes about 1.7 ms. Quiet runs at 3840x2160 with `renderFps` 120: level 8 went from 46 to 65 fps to 97 to 116, level 2 from 71 to 84 to 106 to 120 (the cap), level 5 from 91 to 107 to 100 to 120.
 
 ## Choice of SDL render driver
 
