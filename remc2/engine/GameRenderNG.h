@@ -128,6 +128,30 @@ private:
 		int maxY;
 	};
 	std::vector<QueuedTriangle> m_queue;
+	// The sprites go into the queue too, as the spans DrawSpriteSpan would draw (their columns copied into m_queuedColumns),
+	// each before the triangle queued after it; a band draws the pixels of a span on its rows (the rows of the first and
+	// the last pixel, the span is a straight line).
+	struct QueuedSpan
+	{
+		const int8_t* texels;
+		size_t columns;//columns 0 to length in m_queuedColumns
+		uint8_t* screen;
+		const type_unk_F0E20x* steps;//nullptr: the next pixel
+		int length;
+		int mode;
+		int light;
+		int color;
+		int minRow;
+		int maxRow;
+		size_t beforeTriangle;
+	};
+	std::vector<QueuedSpan> m_queuedSpans;
+	std::vector<SpriteColumn> m_queuedColumns;
+	// the column table of the sprite being queued (in the scratch) and where it is copied in m_queuedColumns, once a sprite
+	void QueueSpriteColumns(const SpriteColumn* columns, int count);
+	const SpriteColumn* m_spriteColumns = nullptr;
+	size_t m_spriteColumnsBase = 0;
+	void DrawQueuedSpan(const QueuedSpan& span, int bandTop, int bandBottom) const;
 	int64_t m_queuedArea = 0;//pixels of the bounding boxes in the view port: a small queue is drawn by the game thread
 	bool m_queueing = false;
 	bool m_skyQueued = false;

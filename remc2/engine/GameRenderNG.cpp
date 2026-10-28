@@ -970,7 +970,6 @@ void GameRenderNG::DrawSorcererNameAndHealthBar_2CB30(type_entity_0x6E8E* entity
 // The entities standing on the tile (a list by oldMapEntity_0x16_22): the shadow on the terrain, then the entity.
 void GameRenderNG::DrawSprites_3E360(int tileIndex)//21f360
 {
-	FlushQueue();
 	Type_Sprite* sprite = nullptr;
 	uint16_t entityIndex = m_tiles[tileIndex].haveBillboard_36;
 	do
@@ -1119,7 +1118,6 @@ void GameRenderNG::DrawEntity(type_entity_0x6E8E* entity, const type_E9C38_small
 // The entities of the tile mirrored in the water (below the terrain, upside down).
 void GameRenderNG::sub_3FD60(int tileIndex)
 {
-	FlushQueue();
 	Type_Sprite* sprite = nullptr;
 	type_entity_0x6E8E* entity = nullptr;
 	uint16_t entityIndex = m_tiles[tileIndex].haveBillboard_36;
@@ -1184,10 +1182,15 @@ void GameRenderNG::ProjectSprite(int across, int height, int depth)
 }
 
 // The sprite loaded (MainInitTmaps_71520 when needed) and marked as used in this frame; nullptr when it cannot be loaded.
+// Loading can free other sprites to make room, so the queue (with their texels) is drawn first.
 Type_Sprite* GameRenderNG::UseSprite(int index)
 {
-	if (!m_ptrLoadedSprites_F66F0x[index] && !MainInitTmaps_71520(index))
-		return nullptr;
+	if (!m_ptrLoadedSprites_F66F0x[index])
+	{
+		FlushQueue();
+		if (!MainInitTmaps_71520(index))
+			return nullptr;
+	}
 	x_DWORD_F5730[str_TMAPS00TAB_BEGIN_BUFFER[index].word_8] = x_D41A0_BYTEARRAY_4_struct.FrameTimingIndex_26;
 	return *m_ptrLoadedSprites_F66F0x[index];
 }
@@ -1320,7 +1323,10 @@ void GameRenderNG::DrawSprite_41BD3(uint32 pass)
 		return;
 	type_entity_0x6E8E* entity = str_F2C20ar.dword0x14x;
 	if (draw && !x_D41A0_BYTEARRAY_4_struct.byteindex_207 && entity->class_0x3F_63 == 3 && (!entity->model_0x40_64 || entity->model_0x40_64 == 1))
+	{
+		FlushQueue();//the name tag is drawn straight on the screen, over what is queued
 		DrawSorcererNameAndHealthBar_2CB30(entity, str_F2C20ar.dword0x04_screenY, static_cast<int16_t>(str_F2C20ar.dword0x03_screenX), str_F2C20ar.dword0x09_realWidth);
+	}
 	if (x_D41A0_BYTEARRAY_4_struct.showHelp_10)
 		sub_88740(entity, str_F2C20ar.dword0x04_screenY + (str_F2C20ar.dword0x09_realWidth >> 1), str_F2C20ar.dword0x03_screenX + (str_F2C20ar.dword0x0c_realHeight >> 1));
 	if ((entity->struct_byte_0xc_12_15.byte[3] & 0x40) && m_standardView)
@@ -1624,6 +1630,7 @@ void GameRenderNG::DrawRotatedSprite(uint32 pass)
 		columns[column].step = columns[column].offset - columns[column - 1].offset;
 		str_F2C20ar.dword0x0b += columnStep;
 	}
+	QueueSpriteColumns(columns, columnCount + 1);
 	for (int i = 0; i < lines; i++)
 	{
 		const SpriteSpan& span = spans[i];
@@ -1700,6 +1707,7 @@ void GameRenderNG::DrawUprightSprite(uint32 pass)
 		columns[column].step = column ? columns[column].offset - columns[column - 1].offset : 22;
 		str_F2C20ar.dword0x0b += columnStep;
 	}
+	QueueSpriteColumns(columns, str_F2C20ar.dword0x09_realWidth + 1);//a span reads columns 1 to its length (the last one stale, unused)
 	if (pass == (uint32_t)SpritePass::Main && x_D41A0_BYTEARRAY_4_struct.showHelp_10)
 		sub_88740(str_F2C20ar.dword0x14x, str_F2C20ar.dword0x04_screenY + (str_F2C20ar.dword0x09_realWidth >> 1), str_F2C20ar.dword0x03_screenX + (str_F2C20ar.dword0x0c_realHeight >> 1));
 	uint8_t* line = &ViewPortRenderBufferStart_DE558[str_F2C20ar.dword0x03_screenX * iScreenWidth_DE560 + str_F2C20ar.dword0x04_screenY];
@@ -1726,8 +1734,48 @@ static void DrawSpritePixels(const int8_t* texels, const GameRenderNG::SpriteCol
 	}
 }
 
-// The sprite modes (dword0x01_visibilityIdx) up to lastMode: 0 the texel, 1 lit (dword0x00), 2/3 blended with the
-// screen, 4/5 blended with the player color (dword0x07), 6/7 blended and lit, 8 the screen darkened (shadow).
+// The pixels of a span in a sprite mode: 0 the texel, 1 lit (light), 2/3 blended with the screen, 4/5 blended with the player
+// color, 6/7 blended and lit, 8 the screen darkened (shadow).
+static void DrawSpanInMode(const int8_t* texels, const GameRenderNG::SpriteColumn* columns, uint8_t* screen, const type_unk_F0E20x* steps, int length,
+	int mode, int light, int color)
+{
+	const uint8_t* lit = ColourLookupTable_F6EE0;
+	const uint8_t* blend = &ColourLookupTable_F6EE0[COLOUR_BLEND_LOOKUP_OFFSET];
+	const auto draw = [&](auto pixel) { DrawSpritePixels(texels, columns, screen, steps, length, pixel); };
+	switch (mode)
+	{
+	case 0:
+		draw([](uint8_t& pixel, uint8_t texel) { pixel = texel; });
+		break;
+	case 1:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = lit[light | texel]; });
+		break;
+	case 2:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = blend[texel << 8 | pixel]; });
+		break;
+	case 3:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = blend[pixel << 8 | texel]; });
+		break;
+	case 4:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = blend[(color & 0xFFFF0000) | (color & 0xFF) << 8 | texel]; });
+		break;
+	case 5:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = blend[(color & 0xFFFF00FF) | texel << 8]; });
+		break;
+	case 6:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = lit[light | blend[texel << 8 | pixel]]; });
+		break;
+	case 7:
+		draw([=](uint8_t& pixel, uint8_t texel) { pixel = lit[light | blend[pixel << 8 | texel]]; });
+		break;
+	case 8:
+		draw([=](uint8_t& pixel, uint8_t) { pixel = lit[light | pixel]; });
+		break;
+	}
+}
+
+// The span in the sprite mode dword0x01_visibilityIdx (up to lastMode), lit by dword0x00, player color dword0x07; with
+// queueing it goes into the queue (see QueuedSpan).
 void GameRenderNG::DrawSpriteSpan(const int8_t* texels, const SpriteColumn* columns, uint8_t* screen, const type_unk_F0E20x* steps, int length, int lastMode)
 {
 	const int mode = str_F2C20ar.dword0x01_visibilityIdx;
@@ -1735,38 +1783,83 @@ void GameRenderNG::DrawSpriteSpan(const int8_t* texels, const SpriteColumn* colu
 		return;
 	const int light = str_F2C20ar.dword0x00 & ~0xFF;
 	const int color = str_F2C20ar.dword0x07;
-	const uint8_t* lit = ColourLookupTable_F6EE0;
-	const uint8_t* blend = &ColourLookupTable_F6EE0[COLOUR_BLEND_LOOKUP_OFFSET];
-	switch (mode)
+	if (!m_queueing)
 	{
-	case 0:
-		DrawSpritePixels(texels, columns, screen, steps, length, [](uint8_t& pixel, uint8_t texel) { pixel = texel; });
-		break;
-	case 1:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = lit[light | texel]; });
-		break;
-	case 2:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = blend[texel << 8 | pixel]; });
-		break;
-	case 3:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = blend[pixel << 8 | texel]; });
-		break;
-	case 4:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = blend[(color & 0xFFFF0000) | (color & 0xFF) << 8 | texel]; });
-		break;
-	case 5:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = blend[(color & 0xFFFF00FF) | texel << 8]; });
-		break;
-	case 6:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = lit[light | blend[texel << 8 | pixel]]; });
-		break;
-	case 7:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t texel) { pixel = lit[light | blend[pixel << 8 | texel]]; });
-		break;
-	case 8:
-		DrawSpritePixels(texels, columns, screen, steps, length, [=](uint8_t& pixel, uint8_t) { pixel = lit[light | pixel]; });
-		break;
+		DrawSpanInMode(texels, columns, screen, steps, length, mode, light, color);
+		return;
 	}
+	QueuedSpan& queued = m_queuedSpans.emplace_back();
+	queued.texels = texels;
+	queued.columns = m_spriteColumnsBase + (columns - m_spriteColumns);
+	queued.screen = screen;
+	queued.steps = steps;
+	queued.length = length;
+	queued.mode = mode;
+	queued.light = light;
+	queued.color = color;
+	const uint8_t* last = steps ? screen + (steps[length - 1].dword_1 - steps[0].dword_1) : screen + length - 1;
+	const auto row = [](const uint8_t* pixel)
+	{
+		const ptrdiff_t offset = pixel - ViewPortRenderBufferStart_DE558;
+		return static_cast<int>(offset >= 0 ? offset / iScreenWidth_DE560 : -((-offset + iScreenWidth_DE560 - 1) / iScreenWidth_DE560));
+	};
+	queued.minRow = (std::min)(row(screen), row(last));
+	queued.maxRow = (std::max)(row(screen), row(last));
+	queued.beforeTriangle = m_queue.size();
+	m_queuedArea += length;
+}
+
+// The column table (count columns) of the sprite about to be queued, copied once for its spans.
+void GameRenderNG::QueueSpriteColumns(const SpriteColumn* columns, int count)
+{
+	if (!m_queueing)
+		return;
+	m_spriteColumns = columns;
+	m_spriteColumnsBase = m_queuedColumns.size();
+	if (count > 0)
+		m_queuedColumns.insert(m_queuedColumns.end(), columns, columns + count);
+}
+
+// The pixels of the queued span on the rows bandTop..bandBottom - 1: the span is a straight line, so its rows go one way and
+// the pixels on the band are one run, found by halving (pixel k is the texel columns[k].offset - columns[0].offset on).
+void GameRenderNG::DrawQueuedSpan(const QueuedSpan& span, int bandTop, int bandBottom) const
+{
+	if (span.maxRow < bandTop || span.minRow >= bandBottom)
+		return;
+	const SpriteColumn* columns = &m_queuedColumns[span.columns];
+	if (span.minRow >= bandTop && span.maxRow < bandBottom)
+	{
+		DrawSpanInMode(span.texels, columns, span.screen, span.steps, span.length, span.mode, span.light, span.color);
+		return;
+	}
+	const auto pixelAt = [&span](int k) { return span.steps ? span.screen + (span.steps[k].dword_1 - span.steps[0].dword_1) : span.screen + k; };
+	const auto rowAt = [&pixelAt](int k)
+	{
+		const ptrdiff_t offset = pixelAt(k) - ViewPortRenderBufferStart_DE558;
+		return static_cast<int>(offset >= 0 ? offset / iScreenWidth_DE560 : -((-offset + iScreenWidth_DE560 - 1) / iScreenWidth_DE560));
+	};
+	const bool down = rowAt(0) <= rowAt(span.length - 1);
+	// the first pixel k for which before(k) is false (before is true up to some k, then false)
+	const auto firstNot = [&span](auto before)
+	{
+		int low = 0;
+		int high = span.length;
+		while (low < high)
+		{
+			const int middle = (low + high) / 2;
+			if (before(middle))
+				low = middle + 1;
+			else
+				high = middle;
+		}
+		return low;
+	};
+	const int from = down ? firstNot([&](int k) { return rowAt(k) < bandTop; }) : firstNot([&](int k) { return rowAt(k) >= bandBottom; });
+	const int to = down ? firstNot([&](int k) { return rowAt(k) < bandBottom; }) : firstNot([&](int k) { return rowAt(k) >= bandTop; });
+	if (from >= to)
+		return;
+	DrawSpanInMode(span.texels + (columns[from].offset - columns[0].offset), columns + from, pixelAt(from), span.steps ? span.steps + from : nullptr, to - from,
+		span.mode, span.light, span.color);
 }
 
 // Wrapping 32-bit arithmetic of the original: start + step * count, a coordinate in 16.16.
@@ -2117,19 +2210,31 @@ void GameRenderNG::DrawTriangle(const TerrainVertex& vertex1, const TerrainVerte
 // a band gets the queue in its order. A small queue is drawn by the game thread alone.
 void GameRenderNG::FlushQueue()
 {
-	if (m_queue.empty() && !m_skyQueued)
+	if (m_queue.empty() && !m_skyQueued && m_queuedSpans.empty())
 		return;
 	const int height = viewPort.Height_DE568;
-	if (!m_skyQueued && m_queuedArea < 32768)
+	// the triangles and the sprite spans before them, in queue order, on the rows bandTop..bandBottom - 1
+	const auto drawQueue = [this](int bandTop, int bandBottom)
 	{
-		for (const QueuedTriangle& queued : m_queue)
-			DrawTriangle(queued.corners[0], queued.corners[1], queued.corners[2], queued.mode, queued.texture, queued.flatLight, 0, height);
-	}
+		size_t span = 0;
+		for (size_t triangle = 0; triangle < m_queue.size(); triangle++)
+		{
+			for (; span < m_queuedSpans.size() && m_queuedSpans[span].beforeTriangle <= triangle; span++)
+				DrawQueuedSpan(m_queuedSpans[span], bandTop, bandBottom);
+			const QueuedTriangle& queued = m_queue[triangle];
+			if (queued.maxY > bandTop && queued.minY < bandBottom)
+				DrawTriangle(queued.corners[0], queued.corners[1], queued.corners[2], queued.mode, queued.texture, queued.flatLight, bandTop, bandBottom);
+		}
+		for (; span < m_queuedSpans.size(); span++)
+			DrawQueuedSpan(m_queuedSpans[span], bandTop, bandBottom);
+	};
+	if (!m_skyQueued && m_queuedArea < 32768)
+		drawQueue(0, height);
 	else
 	{
 		const int bands = 4 * (static_cast<int>(m_renderThreads.size()) + 1);
 		m_nextBand = 0;
-		const auto drawBands = [this, bands, height]
+		const auto drawBands = [this, bands, height, &drawQueue]
 		{
 			for (int band = m_nextBand++; band < bands; band = m_nextBand++)
 			{
@@ -2137,9 +2242,7 @@ void GameRenderNG::FlushQueue()
 				const int bandBottom = height * (band + 1) / bands;
 				if (m_skyQueued)
 					DrawSkyRows(bandTop, bandBottom);
-				for (const QueuedTriangle& queued : m_queue)
-					if (queued.maxY > bandTop && queued.minY < bandBottom)
-						DrawTriangle(queued.corners[0], queued.corners[1], queued.corners[2], queued.mode, queued.texture, queued.flatLight, bandTop, bandBottom);
+				drawQueue(bandTop, bandBottom);
 			}
 		};
 		for (const auto& thread : m_renderThreads)
@@ -2148,6 +2251,8 @@ void GameRenderNG::FlushQueue()
 		WaitForRenderThreads();
 	}
 	m_queue.clear();
+	m_queuedSpans.clear();
+	m_queuedColumns.clear();
 	m_queuedArea = 0;
 	m_skyQueued = false;
 }
