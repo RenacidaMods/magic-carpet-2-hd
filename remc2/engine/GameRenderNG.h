@@ -117,7 +117,7 @@ private:
 	bool m_assignToSpecificCores = false;
 
 	// With render threads over 640x480 the terrain is queued and drawn by bands of rows: every thread takes bands and draws
-	// the queue in its order into them (every pixel gets the same writes in the same order as in one thread).
+	// the queue in its order into them (every pixel gets the same writes in the same order as in one thread), see Streaming.
 	struct QueuedTriangle
 	{
 		TerrainVertex corners[3];
@@ -155,7 +155,34 @@ private:
 	int64_t m_queuedArea = 0;//pixels of the bounding boxes in the view port: a small queue is drawn by the game thread
 	bool m_queueing = false;
 	bool m_skyQueued = false;
-	std::atomic<int> m_nextBand{ 0 };
+	bool m_fillQueued = false;//no sky (a cave, or the sky off): the view port filled with m_fillColour, by bands as the sky
+	uint8_t m_fillColour = 0;
+	// Streaming: once a frame's queue has the sky (or the fill) or enough pixels, the render threads already draw what is
+	// queued (published) while the game thread queues more; each band takes the queue in its order, one thread at a time.
+	// The queue's vectors don't move while streaming: one about to grow stops the stream first. FlushQueue ends it.
+	struct alignas(64) BandProgress
+	{
+		std::atomic<bool> busy{ false };
+		bool started = false;//its sky or fill drawn
+		size_t triangle = 0;//the queue drawn into the band up to here
+		size_t span = 0;
+		// the same for the other threads, set after drawing (a band with nothing new isn't taken): SIZE_MAX not started
+		std::atomic<size_t> drawnTriangles{ SIZE_MAX };
+		std::atomic<size_t> drawnSpans{ 0 };
+	};
+	std::unique_ptr<BandProgress[]> m_bands;
+	int m_bandCount = 0;
+	std::atomic<size_t> m_publishedTriangles{ 0 };
+	std::atomic<size_t> m_publishedSpans{ 0 };
+	std::atomic<bool> m_streamEnd{ false };
+	bool m_streaming = false;
+	int m_unpublished = 0;
+	void QueueAdded();
+	void StartStream();
+	void StopStream();
+	void DrawStream(int firstBand);
+	void DrawBandBackground(int bandTop, int bandBottom);
+	void DrawBandQueue(BandProgress& progress, int bandTop, int bandBottom, size_t triangles, size_t spans);
 	// the sky of the frame (DrawSky_40950), drawn by rows
 	struct SkyPlan
 	{

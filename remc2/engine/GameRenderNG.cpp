@@ -5,6 +5,9 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#if defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__)
+#include <immintrin.h>
+#endif
 
 // sin_DB750 (65536 = 1, 2048 steps a full turn and 512 more for the cosine) a part of a step (0 - 1) after index, between two
 // entries; part 0 = the entry
@@ -324,7 +327,8 @@ void GameRenderNG::DrawSkyRows(int firstRow, int endRow)
 // standing on the tiles. A cave has a ceiling (second heightmap), with reflections the water mirrors the terrain.
 void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __int16 yaw, signed int posZ, int pitch, int16_t roll, int fov)
 {
-	// with render threads over 640x480: the queue of the terrain, drawn before the sprites and at the end
+	// with render threads over 640x480: the queue of the terrain, streamed to the render threads (see StartStream), all drawn
+	// before a sprite is loaded, before the wizard name tag and at the end
 	struct QueueScope
 	{
 		GameRenderNG& render;
@@ -418,9 +422,17 @@ void GameRenderNG::DrawTerrainAndParticles_3C080(__int16 posX, __int16 posY, __i
 
 	if (!D41A0_0.m_GameSettings.m_Graphics.m_wSky || isCaveLevel_D41B6)
 	{
-		uint8_t* line = ViewPortRenderBufferStart_DE558;
-		for (int row = 0; row < viewPort.Height_DE568; row++, line += iScreenWidth_DE560)
-			memset(line, keyColor1_D4B7C, DrawnWidth());
+		if (m_queueing)
+		{
+			m_fillQueued = true;
+			m_fillColour = keyColor1_D4B7C;
+		}
+		else
+		{
+			uint8_t* line = ViewPortRenderBufferStart_DE558;
+			for (int row = 0; row < viewPort.Height_DE568; row++, line += iScreenWidth_DE560)
+				memset(line, keyColor1_D4B7C, DrawnWidth());
+		}
 	}
 	else
 		DrawSky_40950(roll);
@@ -1797,6 +1809,8 @@ void GameRenderNG::DrawSpriteSpan(const int8_t* texels, const SpriteColumn* colu
 		DrawSpanInMode(texels, columns, screen, steps, length, mode, light, color);
 		return;
 	}
+	if (m_streaming && m_queuedSpans.size() == m_queuedSpans.capacity())
+		StopStream();
 	QueuedSpan& queued = m_queuedSpans.emplace_back();
 	queued.texels = texels;
 	queued.columns = m_spriteColumnsBase + (columns - m_spriteColumns);
@@ -1816,6 +1830,7 @@ void GameRenderNG::DrawSpriteSpan(const int8_t* texels, const SpriteColumn* colu
 	queued.maxRow = (std::max)(row(screen), row(last));
 	queued.beforeTriangle = m_queue.size();
 	m_queuedArea += length;
+	QueueAdded();
 }
 
 // The column table (count columns) of the sprite about to be queued, copied once for its spans.
@@ -1823,6 +1838,8 @@ void GameRenderNG::QueueSpriteColumns(const SpriteColumn* columns, int count)
 {
 	if (!m_queueing)
 		return;
+	if (m_streaming && m_queuedColumns.size() + (count > 0 ? count : 0) > m_queuedColumns.capacity())
+		StopStream();
 	m_spriteColumns = columns;
 	m_spriteColumnsBase = m_queuedColumns.size();
 	if (count > 0)
@@ -1937,6 +1954,8 @@ void GameRenderNG::DrawTriangleInProjectionSpace_B6253(const TerrainVertex& vert
 		DrawTriangle(vertex1, vertex2, vertex3, mode, m_triangleTexture_DE55C, m_flatLight_E126C, 0, viewPort.Height_DE568);
 		return;
 	}
+	if (m_streaming && m_queue.size() == m_queue.capacity())
+		StopStream();
 	QueuedTriangle& queued = m_queue.emplace_back();
 	queued.corners[0] = vertex1;
 	queued.corners[1] = vertex2;
@@ -1950,6 +1969,7 @@ void GameRenderNG::DrawTriangleInProjectionSpace_B6253(const TerrainVertex& vert
 		- std::clamp((std::min)({ vertex1.x, vertex2.x, vertex3.x }), 0, static_cast<int>(viewPort.Width_DE564));
 	const int64_t height = std::clamp(queued.maxY, 0, static_cast<int>(viewPort.Height_DE568)) - std::clamp(queued.minY, 0, static_cast<int>(viewPort.Height_DE568));
 	m_queuedArea += width * height;
+	QueueAdded();
 }
 
 // A triangle of a big screen or a longer view whose corners or spans do not fit the 16.16 rows (the tiles beside the camera,
@@ -2215,55 +2235,169 @@ void GameRenderNG::DrawTriangle(const TerrainVertex& vertex1, const TerrainVerte
 		drawRows(std::integral_constant<int, 26>());
 }
 
-// The queue (sky and triangles) by bands of rows: the render threads and the game thread take the bands one after another,
-// a band gets the queue in its order. A small queue is drawn by the game thread alone.
+// The sky or the fill of the rows bandTop..bandBottom - 1, under the queue.
+void GameRenderNG::DrawBandBackground(int bandTop, int bandBottom)
+{
+	if (m_skyQueued)
+		DrawSkyRows(bandTop, bandBottom);
+	else if (m_fillQueued)
+	{
+		uint8_t* line = ViewPortRenderBufferStart_DE558 + iScreenWidth_DE560 * bandTop;
+		for (int row = bandTop; row < bandBottom; row++, line += iScreenWidth_DE560)
+			memset(line, m_fillColour, DrawnWidth());
+	}
+}
+
+// The queue on the rows bandTop..bandBottom - 1 from the band's progress up to `triangles` triangles and `spans` spans, in queue
+// order: each triangle after the sprite spans queued before it.
+void GameRenderNG::DrawBandQueue(BandProgress& progress, int bandTop, int bandBottom, size_t triangles, size_t spans)
+{
+	const QueuedTriangle* queue = m_queue.data();
+	const QueuedSpan* queuedSpans = m_queuedSpans.data();
+	for (;; progress.triangle++)
+	{
+		for (; progress.span < spans && queuedSpans[progress.span].beforeTriangle <= progress.triangle; progress.span++)
+			DrawQueuedSpan(queuedSpans[progress.span], bandTop, bandBottom);
+		if (progress.triangle >= triangles)
+			break;
+		const QueuedTriangle& queued = queue[progress.triangle];
+		if (queued.maxY > bandTop && queued.minY < bandBottom)
+			DrawTriangle(queued.corners[0], queued.corners[1], queued.corners[2], queued.mode, queued.texture, queued.flatLight, bandTop, bandBottom);
+	}
+}
+
+// After a triangle or a sprite span went into the queue: the stream starts once the queue has the sky, the fill or enough
+// pixels to be worth the threads; while streaming, the queue is published every 32 (fewer wake-ups of the threads).
+void GameRenderNG::QueueAdded()
+{
+	if (!m_streaming)
+	{
+		if (m_skyQueued || m_fillQueued || m_queuedArea >= 32768)
+			StartStream();
+		return;
+	}
+	if (++m_unpublished < 32)
+		return;
+	m_unpublished = 0;
+	m_publishedSpans.store(m_queuedSpans.size(), std::memory_order_release);//the spans first: a thread that sees a triangle sees the spans before it
+	m_publishedTriangles.store(m_queue.size(), std::memory_order_release);
+}
+
+// The render threads start drawing the queue (DrawStream); the queue's vectors get room first, they must not move while streaming.
+void GameRenderNG::StartStream()
+{
+	if (m_queue.capacity() < 16384)
+		m_queue.reserve(16384);
+	if (m_queuedSpans.capacity() < 16384)
+		m_queuedSpans.reserve(16384);
+	if (m_queuedColumns.capacity() < 65536)
+		m_queuedColumns.reserve(65536);
+	m_publishedSpans.store(m_queuedSpans.size(), std::memory_order_relaxed);
+	m_publishedTriangles.store(m_queue.size(), std::memory_order_relaxed);
+	m_streamEnd.store(false, std::memory_order_relaxed);
+	m_unpublished = 0;
+	m_streaming = true;
+	const int threads = static_cast<int>(m_renderThreads.size());
+	for (int thread = 0; thread < threads; thread++)
+		m_renderThreads[thread]->Run([this, thread, threads] { DrawStream((thread + 1) * m_bandCount / (threads + 1)); });
+}
+
+// All of the queue published and drawn: the game thread takes bands too until every band has all of it.
+void GameRenderNG::StopStream()
+{
+	m_publishedSpans.store(m_queuedSpans.size(), std::memory_order_release);
+	m_publishedTriangles.store(m_queue.size(), std::memory_order_release);
+	m_streamEnd.store(true, std::memory_order_release);
+	DrawStream(0);
+	WaitForRenderThreads();
+	m_streaming = false;
+}
+
+// A short wait on the processor: a yield (std::this_thread::yield) can lose the processor to another program for a whole time
+// slice of Windows (about 16 ms), and the frame waits for every render thread.
+static void SpinPause()
+{
+#if defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__)
+	for (int i = 0; i < 16; i++)
+		_mm_pause();
+#else
+	std::this_thread::yield();
+#endif
+}
+
+// A thread's part of the stream: each band with something new published (and not taken by another thread) gets it, its sky
+// or fill first. It returns once the stream has ended and every band has all of the queue.
+void GameRenderNG::DrawStream(int firstBand)
+{
+	const int height = viewPort.Height_DE568;
+	for (;;)
+	{
+		const bool ended = m_streamEnd.load(std::memory_order_acquire);
+		const size_t triangles = m_publishedTriangles.load(std::memory_order_acquire);
+		const size_t spans = m_publishedSpans.load(std::memory_order_acquire);
+		bool allDrawn = true;
+		bool drew = false;
+		for (int i = 0; i < m_bandCount; i++)
+		{
+			const int band = (firstBand + i) % m_bandCount;
+			BandProgress& progress = m_bands[band];
+			const size_t drawnTriangles = progress.drawnTriangles.load(std::memory_order_acquire);
+			const size_t drawnSpans = progress.drawnSpans.load(std::memory_order_acquire);
+			// a span can be drawn once the triangles queued before it are
+			if (drawnTriangles != SIZE_MAX && drawnTriangles >= triangles && (drawnSpans >= spans || m_queuedSpans.data()[drawnSpans].beforeTriangle > drawnTriangles))
+				continue;
+			allDrawn = false;
+			if (progress.busy.exchange(true, std::memory_order_acquire))
+				continue;
+			const int bandTop = height * band / m_bandCount;
+			const int bandBottom = height * (band + 1) / m_bandCount;
+			if (!progress.started)
+			{
+				DrawBandBackground(bandTop, bandBottom);
+				progress.started = true;
+			}
+			DrawBandQueue(progress, bandTop, bandBottom, triangles, spans);
+			progress.drawnSpans.store(progress.span, std::memory_order_release);
+			progress.drawnTriangles.store(progress.triangle, std::memory_order_release);
+			progress.busy.store(false, std::memory_order_release);
+			drew = true;
+		}
+		if (ended && allDrawn)
+			return;
+		if (!drew)
+			SpinPause();
+	}
+}
+
+// The queue (the sky or the fill, the triangles and the sprite spans) drawn: by the stream (see StartStream), else a small
+// queue by the game thread alone.
 void GameRenderNG::FlushQueue()
 {
-	if (m_queue.empty() && !m_skyQueued && m_queuedSpans.empty())
+	if (m_queue.empty() && !m_skyQueued && !m_fillQueued && m_queuedSpans.empty())
 		return;
-	const int height = viewPort.Height_DE568;
-	// the triangles and the sprite spans before them, in queue order, on the rows bandTop..bandBottom - 1
-	const auto drawQueue = [this](int bandTop, int bandBottom)
-	{
-		size_t span = 0;
-		for (size_t triangle = 0; triangle < m_queue.size(); triangle++)
-		{
-			for (; span < m_queuedSpans.size() && m_queuedSpans[span].beforeTriangle <= triangle; span++)
-				DrawQueuedSpan(m_queuedSpans[span], bandTop, bandBottom);
-			const QueuedTriangle& queued = m_queue[triangle];
-			if (queued.maxY > bandTop && queued.minY < bandBottom)
-				DrawTriangle(queued.corners[0], queued.corners[1], queued.corners[2], queued.mode, queued.texture, queued.flatLight, bandTop, bandBottom);
-		}
-		for (; span < m_queuedSpans.size(); span++)
-			DrawQueuedSpan(m_queuedSpans[span], bandTop, bandBottom);
-	};
-	if (!m_skyQueued && m_queuedArea < 32768)
-		drawQueue(0, height);
+	if (!m_streaming && (m_skyQueued || m_fillQueued || m_queuedArea >= 32768))
+		StartStream();
+	if (m_streaming)
+		StopStream();
 	else
 	{
-		const int bands = 4 * (static_cast<int>(m_renderThreads.size()) + 1);
-		m_nextBand = 0;
-		const auto drawBands = [this, bands, height, &drawQueue]
-		{
-			for (int band = m_nextBand++; band < bands; band = m_nextBand++)
-			{
-				const int bandTop = height * band / bands;
-				const int bandBottom = height * (band + 1) / bands;
-				if (m_skyQueued)
-					DrawSkyRows(bandTop, bandBottom);
-				drawQueue(bandTop, bandBottom);
-			}
-		};
-		for (const auto& thread : m_renderThreads)
-			thread->Run(drawBands);
-		drawBands();
-		WaitForRenderThreads();
+		BandProgress all;
+		DrawBandQueue(all, 0, viewPort.Height_DE568, m_queue.size(), m_queuedSpans.size());
 	}
 	m_queue.clear();
 	m_queuedSpans.clear();
 	m_queuedColumns.clear();
 	m_queuedArea = 0;
 	m_skyQueued = false;
+	m_fillQueued = false;
+	for (int band = 0; band < m_bandCount; band++)
+	{
+		m_bands[band].started = false;
+		m_bands[band].triangle = 0;
+		m_bands[band].span = 0;
+		m_bands[band].drawnTriangles.store(SIZE_MAX, std::memory_order_relaxed);
+		m_bands[band].drawnSpans.store(0, std::memory_order_relaxed);
+	}
 }
 
 // 0 threads: everything in the game thread at once; the 'T' key goes through 1-7.
@@ -2273,6 +2407,8 @@ void GameRenderNG::SetRenderThreads(uint8_t renderThreads)
 	m_renderThreads.clear();
 	for (int thread = 0; thread < renderThreads; thread++)
 		m_renderThreads.push_back(m_assignToSpecificCores ? std::make_unique<RenderThread>(thread + 1) : std::make_unique<RenderThread>());
+	m_bandCount = 4 * (renderThreads + 1);
+	m_bands = std::make_unique<BandProgress[]>(m_bandCount);
 }
 
 uint8_t GameRenderNG::GetRenderThreads() const
