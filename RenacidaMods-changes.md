@@ -149,7 +149,7 @@ What this fork changes in Magic Carpet 2 HD, and how each change works.
 
 **Setting:** `"numberOfRenderThreads": 0` in `graphics.threading` (with `isActive` true). The RenacidaMods release uses this.
 
-**How:** `SetConfig` uses one fewer than the processor's cores (leaving one for the game thread), at most 6. On Windows the cores come from `GetLogicalProcessorInformationEx`, elsewhere half of `std::thread::hardware_concurrency`. Before, 0 meant one thread. Measured on a Ryzen 9 5950X at 3840x2160: 6 threads about 70 fps, 4 about 68, 7 about 66, and 8 or more slower (more coordination, and the threads spread over its two 8-core halves).
+**How:** `SetConfig` uses one fewer than the processor's cores (leaving one for the game thread), at most 6, or at most 7 with more than 8 cores. On Windows the cores come from `GetLogicalProcessorInformationEx`, elsewhere half of `std::thread::hardware_concurrency`. Before, 0 meant one thread. Measured on a Ryzen 9 5950X at 3840x2160 when this was added: 6 threads about 70 fps, 4 about 68, 7 about 66, and 8 or more slower (more coordination, and the threads spread over its two 8-core halves). Once the render threads drew while the scene was laid out ([above](#drawing-starts-while-the-scene-is-laid-out)), 7 overtook 6 on level 8: 6 threads 145 fps, 7 155, 10 155, 15 130, so the cap became 7 on processors with more than 8 cores. Machines with 8 cores or fewer keep at most 6, so a core stays free for the game thread and the rest of the PC.
 
 ## Line clipping crash fix
 

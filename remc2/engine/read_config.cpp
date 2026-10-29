@@ -315,10 +315,15 @@ bool SetConfig() {
 	{
 		assignToSpecificCores = settingsValue.m_Graphics.m_Threading.m_AssignToSpecificCores;
 
-		// 0: one fewer than the processor's cores, for the game thread, at most 6 (on a Ryzen 9 5950X at 3840x2160, 6 was
-		// fastest, 7 about the same and 8 or more slower: more coordination, and the threads spread over its two 8-core halves)
+		// 0: one fewer than the processor's cores, for the game thread, at most 6, or 7 with more than 8 cores (on a Ryzen 9
+		// 5950X at 3840x2160, since the render threads draw while the game thread queues, 7 is about 7% faster than 6, 10
+		// about the same as 7 and 15 slower: more coordination, and the threads spread over its two 8-core halves)
 		if (numberOfRenderThreads == 0)
-			numberOfRenderThreads = ProcessorCores() - 1 > 6 ? 6 : ProcessorCores() - 1;
+		{
+			const int cores = ProcessorCores();
+			const int most = cores > 8 ? 7 : 6;
+			numberOfRenderThreads = cores - 1 > most ? most : cores - 1;
+		}
 		if (numberOfRenderThreads < 1)
 		{
 			numberOfRenderThreads = 1;
